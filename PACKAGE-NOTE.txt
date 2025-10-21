@@ -1,4 +1,0 @@
-If your build fails with "Cannot find module '@vitejs/plugin-react'":
-Run:
-  npm install -D @vitejs/plugin-react
-and commit the updated package.json.
