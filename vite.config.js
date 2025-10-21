@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Using base:'./' makes built asset paths relative—works on GitHub Pages project sites.
+// IMPORTANT: Set 'base' to your repo name for GitHub Pages
+// Example: https://<user>.github.io/<repo>/ -> base should be '/<repo>/'
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/Task-Management-To-do-list/',
 })
