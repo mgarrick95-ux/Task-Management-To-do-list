@@ -60,3 +60,31 @@ a { color: inherit; }
 .modal-row { display: flex; gap: 12px; }
 .modal-row > * { flex: 1; }
 .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+/* pills + priority */
+.pill{display:inline-block;padding:.1rem .4rem;border-radius:999px;background:#e6e6f0;color:#333;margin-left:.4rem;font-size:.75rem}
+.pill.danger{background:#ffd9d9;color:#8a0b0b}
+.ttl.high{font-weight:700;color:#e43b3b}
+
+/* toast / star celebration */
+.toast{
+  position: fixed; right: 16px; bottom: 16px;
+  background: rgba(30,30,30,.95); color:#fff; padding:12px 16px;
+  border-radius:12px; display:flex; align-items:center; gap:.6rem;
+  box-shadow:0 10px 30px rgba(0,0,0,.35); z-index: 9999;
+  animation: toastIn .25s ease-out;
+}
+.toast .star{
+  font-size: 24px; line-height: 1;
+  animation: spinPop 900ms ease-out;
+}
+@keyframes toastIn{ from{ transform: translateY(12px); opacity:0 } to{ transform:none; opacity:1 } }
+@keyframes spinPop{
+  0%{ transform: scale(.2) rotate(-180deg); opacity:0 }
+  60%{ transform: scale(1.2) rotate(8deg); opacity:1 }
+  100%{ transform: scale(1) rotate(0) }
+}
+
+/* day box */
+.box{border:1px dashed var(--border,#ddd); padding:.6rem; border-radius:.6rem; margin:.4rem 0; background:var(--panel, #fafafa)}
+.bar{height:6px;background:#ececf3;border-radius:999px;overflow:hidden}
+.bar>span{display:block;height:100%;background:#1c76ff}
