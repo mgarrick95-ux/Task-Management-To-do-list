@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chaos Control — Smart Scheduler v3.2</title>
+  <title>Chaos Control — Smart Scheduler v3.3</title>
   <link rel="stylesheet" href="styles.css"/>
 
-  <!-- React from CDN (no build step) -->
+  <!-- React from CDN (no build) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -17,46 +17,58 @@
   <script type="text/babel">
     const {useState,useEffect,useMemo,useRef} = React;
 
-    /* ---------- small helpers ---------- */
-    const pad = (n)=>String(n).padStart(2,"0");
-    const minutes = (h,m=0)=>h*60+m;
+    /* ---------- helpers ---------- */
+    const pad=(n)=>String(n).padStart(2,"0");
+    const minutes=(h,m=0)=>h*60+m;
     const addMinutes=(d,m)=>{const x=new Date(d); x.setMinutes(x.getMinutes()+m); return x;};
     const startOfDay=(d)=>{const x=new Date(d); x.setHours(0,0,0,0); return x;};
     const endOfDay=(d)=>{const x=new Date(d); x.setHours(23,59,59,999); return x;};
-    const startOfWeek=(d,weekStartsOn=1)=>{const x=new Date(d); const day=(x.getDay()+7-weekStartsOn)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x;};
+    const startOfWeek=(d,ws=1)=>{const x=new Date(d); const day=(x.getDay()+7-ws)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x;};
     const toKey=(d)=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
     const parseKey=(s)=>{const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d);};
     const humanTime=(d)=>`${pad(d.getHours())}:${pad(d.getMinutes())}`;
     const endTime=(s,dur)=>addMinutes(s,dur);
     const uid=()=> (crypto?.randomUUID? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
-    /* ---------- Local Storage (with migration) ---------- */
-    const LS_TASKS="cc_tasks_v32";
-    const LS_BLOCKS="cc_blocks_v32";
-    const LS_SETTINGS="cc_settings_v32";
-    const load = (k,fb)=>{try{const raw=localStorage.getItem(k); return raw?JSON.parse(raw):fb;}catch{return fb;}};
-    const save = (k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+    /* ---------- storage ---------- */
+    const LS_TASKS="cc_tasks_v33";
+    const LS_BLOCKS="cc_blocks_v33";
+    const LS_SETTINGS="cc_settings_v33";
+    const load=(k,fb)=>{try{const raw=localStorage.getItem(k);return raw?JSON.parse(raw):fb;}catch{return fb;}};
+    const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
+    /* ---------- DEEP MIGRATION (scans all keys) ---------- */
     function migrateIfEmpty(){
-      // add any earlier keys you used before
-      const OLD_TASK_KEYS=["cc_tasks_v31","cc_tasks_v30","cc_tasks_v3","cc_tasks","tasks"];
-      const OLD_BLOCK_KEYS=["cc_blocks_v31","cc_blocks_v30","cc_blocks","blocks"];
-      const OLD_SETTINGS_KEYS=["cc_settings_v31","cc_settings_v30","cc_settings","settings"];
+      const hasAny=(arr)=>Array.isArray(arr)&&arr.length>0;
+      const looksLikeTask=(x)=>x&&typeof x==="object"&&"title" in x&&("duration" in x||"priority" in x);
+      const looksLikeBlock=(x)=>x&&typeof x==="object"&&("start" in x||"day" in x||"duration" in x);
+      const looksLikeSettings=(x)=>x&&typeof x==="object"&&("workStartMins" in x||"workEndMins" in x||"theme" in x);
 
+      let currTasks=load(LS_TASKS,[]), currBlocks=load(LS_BLOCKS,[]), currSettings=load(LS_SETTINGS,null);
+      if(hasAny(currTasks) || hasAny(currBlocks) || currSettings){
+        console.log("ℹ️ Current storage has data. Migration not needed.");
+        return;
+      }
+
+      let importedTasks=[], importedBlocks=[], importedSettings=null;
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i); if(!k) continue;
+        try{
+          const raw=localStorage.getItem(k); if(!raw) continue;
+          const v=JSON.parse(raw);
+          if(!hasAny(importedTasks) && Array.isArray(v) && v.some(looksLikeTask)) importedTasks=v;
+          else if(!hasAny(importedBlocks) && Array.isArray(v) && v.some(looksLikeBlock)) importedBlocks=v;
+          else if(!importedSettings && looksLikeSettings(v)) importedSettings=v;
+        }catch{}
+      }
       let migrated=false;
-      if(!load(LS_TASKS,[]).length){
-        for(const k of OLD_TASK_KEYS){ const v=load(k,[]); if(Array.isArray(v)&&v.length){ save(LS_TASKS,v); migrated=true; break; } }
-      }
-      if(!load(LS_BLOCKS,[]).length){
-        for(const k of OLD_BLOCK_KEYS){ const v=load(k,[]); if(Array.isArray(v)&&v.length){ save(LS_BLOCKS,v); migrated=true; break; } }
-      }
-      if(load(LS_SETTINGS,null)==null){
-        for(const k of OLD_SETTINGS_KEYS){ const v=load(k,null); if(v && typeof v==="object"){ save(LS_SETTINGS,v); migrated=true; break; } }
-      }
-      console.log(migrated? "✅ Migrated old data" : "ℹ️ No old data to migrate");
+      if(!hasAny(currTasks) && hasAny(importedTasks)){ save(LS_TASKS,importedTasks); migrated=true; }
+      if(!hasAny(currBlocks) && hasAny(importedBlocks)){ save(LS_BLOCKS,importedBlocks); migrated=true; }
+      if(!currSettings && importedSettings){ save(LS_SETTINGS,importedSettings); migrated=true; }
+      console.log(migrated? "✅ Deep migration imported data from older keys." : "ℹ️ No older data found to migrate.");
     }
 
-    /* ---------- Alberta holidays (current + next year) ---------- */
+    /* ---------- holidays (AB) ---------- */
     function easterDate(year){const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return new Date(year,mo-1,da);}
     function nthDowOfMonth(y,m,dow,n){const f=new Date(y,m,1),o=(dow-f.getDay()+7)%7;return new Date(y,m,1+o+(n-1)*7);}
     function lastDowBefore(y,m,lastDay,dow){const d=new Date(y,m,lastDay); while(d.getDay()!==dow) d.setDate(d.getDate()-1); return d;}
@@ -65,21 +77,21 @@
       const list=(yr)=>[
         {d:new Date(yr,0,1), n:"New Year's Day"},
         {d:nthDowOfMonth(yr,1,1,3), n:"Family Day"},
-        {d:(d=>{const e=easterDate(yr); const g=new Date(e); g.setDate(e.getDate()-2); return g;})(), n:"Good Friday"},
+        {d:(()=>{const e=easterDate(yr); const g=new Date(e); g.setDate(e.getDate()-2); return g;})(), n:"Good Friday"},
         {d:lastDowBefore(yr,4,24,1), n:"Victoria Day"},
         {d:new Date(yr,6,1), n:"Canada Day"},
         {d:nthDowOfMonth(yr,8,1,1), n:"Labour Day"},
-        {d:new Date(yr,8,30), n:"National Day for Truth and Reconciliation"},
+        {d:new Date(yr,8,30), n:"Truth and Reconciliation"},
         {d:nthDowOfMonth(yr,9,1,2), n:"Thanksgiving"},
         {d:new Date(yr,10,11), n:"Remembrance Day"},
         {d:new Date(yr,11,25), n:"Christmas Day"},
         {d:new Date(yr,11,26), n:"Boxing Day"},
       ];
-      const all=[...list(y),...list(y+1)];
-      const m=new Map(); all.forEach(h=>m.set(toKey(h.d),h.n)); return m;
+      const all=[...list(y),...list(y+1)]; const m=new Map();
+      all.forEach(h=>m.set(toKey(h.d),h.n)); return m;
     }
 
-    /* ---------- snark lines ---------- */
+    /* ---------- snark ---------- */
     const SNARK_MILD=[
       "Well look at you, functioning adult of the year.",
       "Everything done? I’m as shocked as you are.",
@@ -100,11 +112,10 @@
     const tokens=(s)=>(s||"").toLowerCase().replace(/[^a-z0-9\s-]/g," ").split(/\s+/).filter(w=>w && !STOP.has(w));
     function jaccard(a,b){const A=new Set(tokens(a)),B=new Set(tokens(b)); if(A.size===0||B.size===0) return 0; let i=0; for(const w of A) if(B.has(w)) i++; return i/(A.size+B.size-i);}
     const leadingNum=(s)=>((s||"").match(/^\s*(\d{3,})/)||[])[1]||null;
-    function isLikelyDuplicate(a,b){const na=leadingNum(a), nb=leadingNum(b); return (na&&nb&&na===nb) || jaccard(a,b)>=0.58;}
+    const isLikelyDuplicate=(a,b)=>{const na=leadingNum(a),nb=leadingNum(b); return (na&&nb&&na===nb)|| jaccard(a,b)>=0.58;};
 
     /* ---------- App ---------- */
     function App(){
-      // run migration once
       useEffect(()=>{ migrateIfEmpty(); }, []);
 
       const holi=useMemo(()=>abHolidaysMap(),[]);
@@ -135,12 +146,12 @@
 
       // theme
       useEffect(()=>{
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const dark = settings.theme==="dark" || (settings.theme==="auto" && prefersDark);
-        document.documentElement.classList.toggle("dark", dark);
+        const prefersDark=window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const dark=settings.theme==="dark" || (settings.theme==="auto" && prefersDark);
+        document.documentElement.classList.toggle("dark",dark);
       },[settings.theme]);
 
-      // move missed forward on load
+      // move missed forward, jump to this week
       useEffect(()=>{
         const todayKey=toKey(today);
         setTasks(prev=>{
@@ -169,7 +180,7 @@
       const searchToks=useMemo(()=>search.trim().toLowerCase().split(/\s+/).filter(Boolean),[search]);
       const matches=(t)=>{
         if(searchToks.length===0) return true;
-        const hay = [
+        const hay=[
           t.title||"", t.notes||"", t.calendar||"",
           t.priority===1?"high":t.priority===3?"low":"medium",
           t.done?"done":"", t._missed?"missed":"",
@@ -180,8 +191,7 @@
 
       /* ---------- busy blocks ---------- */
       function busyOn(day){
-        const key=toKey(day);
-        const arr=[];
+        const key=toKey(day); const arr=[];
         for(const t of tasks){
           if(!t.scheduledStart) continue;
           const s=new Date(t.scheduledStart);
@@ -198,15 +208,14 @@
       /* ---------- auto-schedule ---------- */
       function autoSchedule(){
         setTasks(prev=>{
-          const next=prev.map(t=>({...t, _moved:false}));
+          const next=prev.map(t=>({...t,_moved:false}));
           const workStart=settings.workStartMins, workEnd=settings.workEndMins, slot=settings.slotSize, buffer=settings.bufferMins;
-          function canPlace(start, dur, dayBusy){
+          function canPlace(start,dur,dayBusy){
             for(const b of dayBusy){
               const A1=start.getTime()-buffer*60000, A2=A1+(dur+buffer*2)*60000;
               const B1=b.start.getTime()-buffer*60000, B2=B1+(b.duration+buffer*2)*60000;
               if(A1<B2 && B1<A2) return false;
-            }
-            return true;
+            } return true;
           }
           const items=next.filter(t=>!t.done).sort((a,b)=>a.priority-b.priority || (a.dueDate>b.dueDate?1:-1));
           for(const t of items){
@@ -225,7 +234,7 @@
               if(!settings.preferMornings) order.reverse();
               for(const m of order){
                 const s=addMinutes(day,m);
-                if(canPlace(s, t.duration, busy)){
+                if(canPlace(s,t.duration,busy)){
                   t.scheduledStart=s.toISOString();
                   t._moved=true; placed=true; break;
                 }
@@ -235,15 +244,14 @@
           return next;
         });
       }
-      function clearSchedules(){ setTasks(prev=>prev.map(t=>({...t, scheduledStart:null, _moved:false}))); }
+      const clearSchedules=()=>setTasks(prev=>prev.map(t=>({...t,scheduledStart:null,_moved:false})));
 
-      /* ---------- gold star / chime ---------- */
+      /* ---------- gold star + chime ---------- */
       function chime(){
         try{
           const ctx=new (window.AudioContext||window.webkitAudioContext)();
           const o=ctx.createOscillator(), g=ctx.createGain();
-          o.type="sine"; o.frequency.value=880; g.gain.value=0.001;
-          o.connect(g); g.connect(ctx.destination); o.start();
+          o.type="sine"; o.frequency.value=880; g.gain.value=0.001; o.connect(g); g.connect(ctx.destination); o.start();
           const t=ctx.currentTime;
           g.gain.exponentialRampToValueAtTime(0.03,t+0.02);
           o.frequency.exponentialRampToValueAtTime(1320,t+0.15);
@@ -251,9 +259,10 @@
           o.stop(t+0.65);
         }catch{}
       }
+      function confetti(){ for(let i=0;i<40;i++){ const s=document.createElement("span"); s.className="confetti"; s.style.left=Math.random()*100+"%"; s.style.animationDelay=(Math.random()*0.4)+"s"; document.body.appendChild(s); setTimeout(()=>s.remove(),2500);} }
       function toggleDone(id){
         setTasks(prev=>{
-          const next=prev.map(t=> t.id===id ? ({...t, done:!t.done}) : t);
+          const next=prev.map(t=>t.id===id?({...t,done:!t.done}):t);
           setTimeout(()=>{
             const tk=toKey(startOfDay(new Date()));
             const todays=next.filter(t=>t.scheduledStart && toKey(new Date(t.scheduledStart))===tk);
@@ -261,22 +270,33 @@
             if(allDone){
               const pool=settings.tone==="random"? [...SNARK_MILD,...SNARK_CHAOS] : (settings.tone==="chaos"?SNARK_CHAOS:SNARK_MILD);
               setToast(pool[Math.floor(Math.random()*pool.length)]);
-              confetti();
-              chime();
+              confetti(); chime();
             }
           },50);
           return next;
         });
       }
-      function confetti(){
-        for(let i=0;i<40;i++){
-          const s=document.createElement("span");
-          s.className="confetti";
-          s.style.left=Math.random()*100+"%";
-          s.style.animationDelay=(Math.random()*0.4)+"s";
-          document.body.appendChild(s);
-          setTimeout(()=>s.remove(),2500);
-        }
+
+      /* ---------- export / import ---------- */
+      function exportData(){
+        const data={ tasks:load(LS_TASKS,[]), blocks:load(LS_BLOCKS,[]), settings:load(LS_SETTINGS,null), exportedAt:new Date().toISOString(), version:"v3.3" };
+        const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+        const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="chaos-control-backup.json"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      function importData(file){
+        if(!file) return;
+        const reader=new FileReader();
+        reader.onload=()=>{
+          try{
+            const obj=JSON.parse(reader.result);
+            if(obj.tasks) save(LS_TASKS,obj.tasks);
+            if(obj.blocks) save(LS_BLOCKS,obj.blocks);
+            if(obj.settings) save(LS_SETTINGS,obj.settings);
+            setTasks(load(LS_TASKS,[])); setBlocks(load(LS_BLOCKS,[])); setSettings(load(LS_SETTINGS,null)||{});
+            alert("Import complete ✅");
+          }catch{ alert("Import failed: not a valid backup file."); }
+        };
+        reader.readAsText(file);
       }
 
       /* ---------- add task ---------- */
@@ -297,7 +317,7 @@
           const base=startOfDay(new Date());
           if(preset==="today"){ windowStart=toKey(base); windowEnd=toKey(base); }
           else if(preset==="next2"){ windowStart=toKey(base); windowEnd=toKey(addMinutes(base,1440)); }
-          else if(preset==="thisweek"){ windowStart=toKey(base); windowEnd=toKey(addMinutes(startOfWeek(base, settings.weekStartsOn), 6*1440)); }
+          else if(preset==="thisweek"){ windowStart=toKey(base); windowEnd=toKey(addMinutes(startOfWeek(base, settings.weekStartsOn),6*1440)); }
           else { const by=(data.get("flex_by")||toKey(base)).toString(); windowStart=toKey(base); windowEnd=by; }
           dueDate=windowEnd;
         }else{
@@ -309,7 +329,7 @@
           else if(d) dayLock=d;
         }
 
-        // duplicate warning within same/similar window
+        // duplicate warning
         const overlap=(x)=> (dayLock && x.dayLock && x.dayLock===dayLock)
                           || (dueDate && x.dueDate && x.dueDate===dueDate)
                           || (!dayLock && !x.dayLock && windowStart<=x.windowEnd && x.windowStart<=windowEnd);
@@ -328,7 +348,7 @@
         setTasks(prev=>[newTask,...prev]);
       }
 
-      /* ---------- reschedule helpers ---------- */
+      /* ---------- rescheduling ---------- */
       function rescheduleTask(id, days){
         setTasks(prev=>prev.map(t=>{
           if(t.id!==id) return t;
@@ -341,7 +361,7 @@
         }));
       }
 
-      /* ---------- UI: header ---------- */
+      /* ---------- header ---------- */
       function Header(){
         return (
           <header className="hdr">
@@ -361,7 +381,7 @@
         );
       }
 
-      /* ---------- UI: add bar ---------- */
+      /* ---------- add bar ---------- */
       function AddBar(){
         const ref=useRef();
         return (
@@ -507,7 +527,7 @@
         </div>
       );}
 
-      /* ---------- task card (left + unscheduled list) ---------- */
+      /* ---------- task card ---------- */
       function TaskCard({t}){
         return (
           <div className={"taskcard"+(t.priority===1?" high":"")+(t._missed?" missed":"")}
@@ -531,7 +551,7 @@
         );
       }
 
-      /* ---------- day column with drag & drop + day summary ---------- */
+      /* ---------- day column ---------- */
       function DayColumn({day}){
         const key=toKey(day);
         const busy=busyOn(day);
@@ -655,7 +675,16 @@
                     <option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option>
                   </select>
                 </div>
-                <div className="row"><button className="btn" onClick={autoSchedule}>Auto-Schedule All</button></div>
+                <div className="row">
+                  <button className="btn" onClick={autoSchedule}>Auto-Schedule All</button>
+                  <button className="btn" onClick={exportData}>Export JSON</button>
+                  <label className="btn" style={{position:"relative",overflow:"hidden"}}>
+                    Import JSON
+                    <input type="file" accept="application/json"
+                      onChange={(e)=>importData(e.target.files[0])}
+                      style={{position:"absolute",inset:0,opacity:0,cursor:"pointer"}}/>
+                  </label>
+                </div>
               </div>
             </aside>
 
@@ -667,7 +696,7 @@
           </div>
 
           {toast && <div className="toast" onClick={()=>setToast(null)}><div className="star">⭐</div><div className="msg">{toast}</div></div>}
-          <footer className="ftr">Chaos Control v3.2 • for <strong>dysfunctional adults managing total chaos</strong>.</footer>
+          <footer className="ftr">Chaos Control v3.3 • for <strong>dysfunctional adults managing total chaos</strong>.</footer>
 
           <Modal/>
         </div>
