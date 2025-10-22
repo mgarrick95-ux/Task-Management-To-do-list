@@ -22,7 +22,7 @@ const startOfWeek = (date, weekStartsOn=1) => { const d=new Date(date); const da
 const daysOfWeek = (anchor) => Array.from({length:7},(_,i)=>addMinutes(anchor,i*1440))
 
 // ---------- Storage ----------
-const LS_TASKS="cc_tasks_v2", LS_BLOCKS="cc_blocks_v2", LS_SETTINGS="cc_settings_v2"
+const LS_TASKS="cc_tasks_v3", LS_BLOCKS="cc_blocks_v2", LS_SETTINGS="cc_settings_v2"
 const load = (k,fb) => { try{ const raw=localStorage.getItem(k); return raw?JSON.parse(raw):fb }catch{return fb} }
 const save = (k,v) => { try{ localStorage.setItem(k, JSON.stringify(v)) }catch{} }
 
@@ -53,6 +53,7 @@ export default function App(){
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [anchorDate, setAnchorDate] = useState(()=> startOfWeek(new Date(), load(LS_SETTINGS, defaultSettings).weekStartsOn))
   const [filterCalendars, setFilterCalendars] = useState(()=> new Set(load(LS_SETTINGS, defaultSettings).calendars.filter(c=>c.enabled).map(c=>c.id)))
+  const [editTaskId, setEditTaskId] = useState(null)           // NEW: modal
   const weekDays = useMemo(()=> daysOfWeek(anchorDate), [anchorDate])
   const calmap = useMemo(()=> CALMAP(settings), [settings])
 
@@ -84,6 +85,9 @@ export default function App(){
     const block={ id:crypto.randomUUID(), title, startISO, duration, calendar }
     setBlocks(prev=>[block, ...prev]); form.reset()
   }
+  function updateTask(id, patch){
+    setTasks(prev=>prev.map(t=> t.id===id ? ({...t, ...patch}) : t))
+  }
   function toggleDone(id){
     setTasks(prev=>prev.map(t=>t.id===id?{...t, done:!t.done}:t))
     const t=tasks.find(x=>x.id===id)
@@ -93,7 +97,7 @@ export default function App(){
       setTasks(prev=>[clone, ...prev])
     }
   }
-  function removeTask(id){ setTasks(prev=>prev.filter(t=>t.id!==id)); if(selectedTaskId===id) setSelectedTaskId(null) }
+  function removeTask(id){ setTasks(prev=>prev.filter(t=>t.id!==id)); if(selectedTaskId===id) setSelectedTaskId(null); if(editTaskId===id) setEditTaskId(null) }
   function unscheduleTask(id){ setTasks(prev=>prev.map(t=>t.id===id?{...t, scheduledStart:null, _moved:false}:t)) }
   function assignTaskToStart(taskId, startDate){
     setTasks(prev=>prev.map(t=> t.id===taskId ? ({...t, scheduledStart:startDate.toISOString(), _moved:true}) : t ))
@@ -277,6 +281,84 @@ export default function App(){
     )
   }
 
+  // ---------- Edit Modal ----------
+  function EditTaskModal({ task, onClose }){
+    const [form, setForm] = useState(()=>({
+      title: task.title,
+      duration: task.duration,
+      dueDate: task.dueDate,
+      priority: task.priority,
+      flexible: task.flexible,
+      calendar: task.calendar
+    }))
+    const set = (k,v)=>setForm(prev=>({...prev,[k]:v}))
+
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-card" onClick={(e)=>e.stopPropagation()}>
+          <h3 className="text-sm font-semibold mb-3">Edit Task</h3>
+
+          <div className="mb-3">
+            <label className="text-xs text-gray-500">Title</label>
+            <input className="border rounded-xl p-3" value={form.title} onChange={e=>set('title', e.target.value)} style={{width:'100%'}} />
+          </div>
+
+          <div className="modal-row mb-3">
+            <div>
+              <label className="text-xs text-gray-500">Duration (min)</label>
+              <input type="number" className="border rounded-xl p-3" value={form.duration} onChange={e=>set('duration', parseInt(e.target.value||'0',10))} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Due date</label>
+              <input type="date" className="border rounded-xl p-3" value={form.dueDate} onChange={e=>set('dueDate', e.target.value)} />
+            </div>
+          </div>
+
+          <div className="modal-row mb-3">
+            <div>
+              <label className="text-xs text-gray-500">Priority</label>
+              <select className="border rounded-xl p-3" value={form.priority} onChange={e=>set('priority', parseInt(e.target.value,10))}>
+                <option value={1}>High</option>
+                <option value={2}>Medium</option>
+                <option value={3}>Low</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Calendar</label>
+              <select className="border rounded-xl p-3" value={form.calendar} onChange={e=>set('calendar', e.target.value)}>
+                {settings.calendars.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm mb-3">
+            <input type="checkbox" checked={form.flexible} onChange={e=>set('flexible', e.target.checked)} /> Flexible time
+          </label>
+
+          <div className="modal-actions">
+            <button className="p-3 rounded-xl bg-indigo-600" onClick={()=>{
+              updateTask(task.id, {
+                title: form.title.trim() || task.title,
+                duration: clamp(parseInt(form.duration,10)||task.duration, 5, 24*60),
+                dueDate: form.dueDate,
+                priority: form.priority,
+                flexible: form.flexible,
+                calendar: form.calendar
+              })
+              onClose()
+            }}>Save</button>
+
+            <button className="p-3 rounded-xl bg-gray-100 hover:bg-gray-200" onClick={()=>{ unscheduleTask(task.id); onClose() }}>Unschedule</button>
+
+            <button className="p-3 rounded-xl bg-red-50 text-red-700" onClick={()=>{ removeTask(task.id); onClose() }}>Delete</button>
+
+            <button className="p-3 rounded-xl bg-gray-100 hover:bg-gray-200" onClick={onClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   function CalendarDay({ day }){
     const busy=busyBlocksOnDay(day)
     const used=busy.reduce((s,b)=>s+b.duration,0)
@@ -289,13 +371,13 @@ export default function App(){
     const { workStartMins, workEndMins, slotSize }=settings
     const slots=[]; for(let t=workStartMins; t<workEndMins; t+=slotSize) slots.push(t)
 
-    // NEW: tasks due/overdue for this day that have NO scheduled time
+    // tasks due/overdue for this day that have NO scheduled time
     const dayKey = toKey(day)
     const dueOrOverdueUnscheduled = tasks.filter(t =>
       !t.done &&
       !t.scheduledStart &&
       filterCalendars.has(t.calendar) &&
-      t.dueDate <= dayKey // due today or earlier
+      t.dueDate <= dayKey
     ).sort((a,b)=> a.priority - b.priority || (a.dueDate > b.dueDate ? 1 : -1))
 
     return (
@@ -317,12 +399,41 @@ export default function App(){
             const slotStart=addMinutes(day,m)
             const block=busy.find(b=>sameMinute(b.start, slotStart))
             if(block){
-              const height=Math.max(40, Math.floor((block.duration/slotSize)*40))
+              const height=Math.max(44, Math.floor((block.duration/slotSize)*44))
               const color=calmap[block.calendar]?.color || '#334155'
+              const isTask = block.type==='task'
+              const t = isTask ? tasks.find(x=>x.id===block.taskId) : null
+
               return (
-                <div key={m} className="p-3" style={{height, background:`${color}20`}} draggable={block.type==='task'} onDragStart={(e)=> block.type==='task' && onDragStartTask(e,{taskId:block.taskId})}>
-                  <div className="text-xs font-medium" style={{color}}>{humanTime(slotStart)} • {block.title}</div>
-                  <div className="text-xs" style={{opacity:.8, color}}>{block.duration} min</div>
+                <div key={m} className="p-3" style={{height, background:`${color}20`}} draggable={isTask} onDragStart={(e)=> isTask && onDragStartTask(e,{taskId:block.taskId})}>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-medium" style={{color}}>
+                      {humanTime(slotStart)} •{" "}
+                      {isTask ? (
+                        <span className="cursor-pointer" onClick={()=> setEditTaskId(block.taskId)} title="Click to edit">
+                          {block.title}
+                        </span>
+                      ) : (
+                        block.title
+                      )}
+                    </div>
+                    {/* NEW: checkbox inline to mark complete */}
+                    {isTask && t && (
+                      <label className="text-xs" style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                        <input
+                          type="checkbox"
+                          checked={!!t.done}
+                          onChange={(e)=>{ e.stopPropagation(); toggleDone(block.taskId) }}
+                          title="Mark complete"
+                        />
+                        <span style={{opacity:.8}}>Done</span>
+                      </label>
+                    )}
+                  </div>
+                  <div className="text-xs" style={{opacity:.85, color}}>
+                    {block.duration} min
+                    {isTask && t && t.priority===1 && <span className="badge red" style={{marginLeft:8}}>High</span>}
+                  </div>
                 </div>
               )
             }
@@ -338,7 +449,7 @@ export default function App(){
           })}
         </div>
 
-        {/* NEW: Unscheduled list for this day */}
+        {/* Unscheduled (due/overdue) */}
         {dueOrOverdueUnscheduled.length > 0 && (
           <div className="p-3" style={{borderTop:'1px solid #e5e7eb'}}>
             <div className="text-xs text-gray-600" style={{marginBottom:6}}>Unscheduled (due/overdue):</div>
@@ -513,9 +624,15 @@ export default function App(){
             {weekDays.map((d)=> <CalendarDay key={d.toISOString()} day={d} />)}
           </section>
 
-          <p className="mt-4 text-xs text-gray-500">Tip: Drag a task onto a time slot to place it. Buffers and daily capacity are enforced. Mark recurring tasks done to spawn the next occurrence. Dependencies ensure tasks place only after their predecessors.</p>
+          <p className="mt-4 text-xs text-gray-500">Tip: Click a scheduled task’s title to edit, or tick its checkbox to mark complete. Drag tasks to slots, and use auto-schedule to fill your week.</p>
         </div>
       </div>
+
+      {/* Modal mount */}
+      {editTaskId && (() => {
+        const t = tasks.find(x=>x.id===editTaskId)
+        return t ? <EditTaskModal task={t} onClose={()=>setEditTaskId(null)} /> : null
+      })()}
     </div>
   )
-                                                                                                                                             }
+}
