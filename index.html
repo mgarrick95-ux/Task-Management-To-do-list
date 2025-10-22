@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chaos Control — Smart Scheduler v3</title>
+  <title>Chaos Control — Smart Scheduler v3.1</title>
   <link rel="stylesheet" href="styles.css"/>
   <!-- React & Babel from CDN for zero-build deploy -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -31,9 +31,9 @@
     const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
     /* ---------- Local Storage ---------- */
-    const LS_TASKS="cc_tasks_v3_final";
-    const LS_BLOCKS="cc_blocks_v3_final";
-    const LS_SETTINGS="cc_settings_v3_final";
+    const LS_TASKS="cc_tasks_v31";
+    const LS_BLOCKS="cc_blocks_v31";
+    const LS_SETTINGS="cc_settings_v31";
     const load = (k,fb) => { try { const raw=localStorage.getItem(k); return raw?JSON.parse(raw):fb } catch { return fb } };
     const save = (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} };
 
@@ -62,15 +62,15 @@
       const list = [];
       const push = (d, name) => list.push({date: toKey(d), name});
       push(new Date(year,0,1), "New Year's Day");
-      push(nthDowOfMonth(year,1,1,3), "Family Day");             // 3rd Mon Feb
+      push(nthDowOfMonth(year,1,1,3), "Family Day");
       const easter = easterDate(year);
       const goodFriday = new Date(easter); goodFriday.setDate(easter.getDate()-2);
       push(goodFriday, "Good Friday");
-      push(lastDowBefore(year,4,24,1), "Victoria Day");          // last Mon before May 25
+      push(lastDowBefore(year,4,24,1), "Victoria Day");
       push(new Date(year,6,1), "Canada Day");
-      push(nthDowOfMonth(year,8,1,1), "Labour Day");             // 1st Mon Sept
+      push(nthDowOfMonth(year,8,1,1), "Labour Day");
       push(new Date(year,8,30), "National Day for Truth and Reconciliation");
-      push(nthDowOfMonth(year,9,1,2), "Thanksgiving");           // 2nd Mon Oct
+      push(nthDowOfMonth(year,9,1,2), "Thanksgiving");
       push(new Date(year,10,11), "Remembrance Day");
       push(new Date(year,11,25), "Christmas Day");
       push(new Date(year,11,26), "Boxing Day");
@@ -116,7 +116,7 @@
       const numA = leadingNum(titleA), numB = leadingNum(titleB);
       const sameNum = (numA && numB && numA===numB);
       const sim = jaccard(titleA, titleB);
-      return sameNum || sim >= 0.58; // threshold tuned to avoid over-flag
+      return sameNum || sim >= 0.58;
     }
 
     /* ---------- App ---------- */
@@ -132,8 +132,8 @@
         dailyCapacityMins: 7*60,
         bufferMins: 5,
         preferMornings: true,
-        tone: "mild", // mild | chaos | random
-        theme: "auto" // auto | light | dark
+        tone: "mild",
+        theme: "auto"
       }));
       const [tasks, setTasks] = useState(()=>load(LS_TASKS, []));
       const [blocks, setBlocks] = useState(()=>load(LS_BLOCKS, []));
@@ -141,10 +141,7 @@
       const [search, setSearch] = useState("");
       const [showSnark, setShowSnark] = useState(null);
 
-      /* NEW: editor modal state */
-      const [editor, setEditor] = useState(null); // {id, title, dur_h, dur_m, priority, mode, flexPreset/by, fixed_date, fixed_time, calendar, done}
-
-      /* NEW: drag & drop state */
+      const [editor, setEditor] = useState(null);
       const [dragTaskId, setDragTaskId] = useState(null);
 
       useEffect(()=>save(LS_SETTINGS, settings), [settings]);
@@ -185,13 +182,6 @@
         setAnchorDate(startOfWeek(today, settings.weekStartsOn));
       }, []);
 
-      // Calendars (colors)
-      const calmap = useMemo(()=> ({
-        work:   {id:"work", name:"Work",    color:"#2563eb"},
-        team:   {id:"team", name:"Team",    color:"#16a34a"},
-        personal:{id:"personal", name:"Home", color:"#9333ea"},
-      }), []);
-
       const weekDays = useMemo(()=> Array.from({length:7}, (_,i)=> addMinutes(anchorDate, i*1440)), [anchorDate]);
       const todayKey = toKey(today);
 
@@ -211,22 +201,21 @@
         return searchTokens.every(tok => hay.includes(tok));
       }
 
-      // Busy blocks for a day (tasks+blocks)
+      // Build blocks for a day, sort with done at bottom
       function busyBlocksOnDay(dayDate){
         const dayKey = toKey(dayDate);
         const busy = [];
-        // tasks
         for(const t of tasks){
-          if(!t.scheduledStart || t.done) continue;
+          if(!t.scheduledStart) continue;
           const s = new Date(t.scheduledStart);
-          if(toKey(s)===dayKey) busy.push({start:s, duration:t.duration, title:t.title, type:"task", calendar:t.calendar, t});
+          if(toKey(s)===dayKey) busy.push({start:s, duration:t.duration, title:t.title, type:"task", t});
         }
-        // (optional) blocks if you add them later
-        for(const b of blocks){
-          const s = new Date(b.startISO);
-          if(toKey(s)===dayKey) busy.push({start:s, duration:b.duration, title:b.title, type:"block", calendar:b.calendar});
-        }
-        busy.sort((a,b)=>a.start-b.start);
+        busy.sort((a,b)=>{
+          const aDone = a.type==="task" ? !!a.t.done : false;
+          const bDone = b.type==="task" ? !!b.t.done : false;
+          if(aDone !== bDone) return aDone ? 1 : -1; // done to bottom
+          return a.start - b.start;
+        });
         return busy;
       }
 
@@ -261,9 +250,6 @@
             const days = Math.max(1, Math.ceil((endOfDay(rangeEnd)-startOfDay(rangeStart))/86400000)+1);
             for(let d=0; d<days && !placed; d++){
               const day = addMinutes(rangeStart, d*1440);
-              const dayKey = toKey(day);
-              if (holi.has(dayKey)) continue;
-
               const busy = busyBlocksOnDay(day);
               const used = busy.reduce((s,b)=>s+b.duration,0);
               if(used + t.duration > settings.dailyCapacityMins) continue;
@@ -286,22 +272,40 @@
           return next;
         });
       }
-
       function clearSchedules(){ setTasks(prev=>prev.map(t=>({...t, scheduledStart:null, _moved:false}))); }
 
-      // Done + gold star
+      // Chime + gold star toast when all of TODAY’s tasks are done
+      function playChime(){
+        try{
+          const ctx = new (window.AudioContext||window.webkitAudioContext)();
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = "sine";
+          o.frequency.value = 880; // A5
+          g.gain.value = 0.001;
+          o.connect(g); g.connect(ctx.destination);
+          o.start();
+          const now = ctx.currentTime;
+          g.gain.exponentialRampToValueAtTime(0.03, now+0.02);
+          o.frequency.exponentialRampToValueAtTime(1320, now+0.15);
+          g.gain.exponentialRampToValueAtTime(0.00001, now+0.6);
+          o.stop(now+0.65);
+        }catch(e){}
+      }
       function toggleDone(id){
         setTasks(prev=>{
           const next = prev.map(t=> t.id===id ? ({...t, done:!t.done}) : t);
           setTimeout(()=>{
-            const anyToday = next.some(t=> t.scheduledStart && toKey(new Date(t.scheduledStart))===todayKey);
-            const allDoneToday = anyToday && next.filter(t=> t.scheduledStart && toKey(new Date(t.scheduledStart))===todayKey).every(t=>t.done);
-            if(allDoneToday){
+            const todayKeyNow = toKey(startOfDay(new Date()));
+            const todays = next.filter(t=> t.scheduledStart && toKey(new Date(t.scheduledStart))===todayKeyNow);
+            const allDone = todays.length>0 && todays.every(t=>t.done);
+            if(allDone){
               const pool = settings.tone==="random" ? [...SNARK_MILD, ...SNARK_CHAOS] :
                            settings.tone==="chaos" ? SNARK_CHAOS : SNARK_MILD;
               const msg = pool[Math.floor(Math.random()*pool.length)];
               setShowSnark({msg});
               confettiBurst();
+              playChime();
             }
           }, 50);
           return next;
@@ -319,7 +323,7 @@
         }
       }
 
-      /* ---------- Add Task (with smarter duplicate check) ---------- */
+      /* ---------- Add Task (with duplicate warning) ---------- */
       function addTaskFromForm(data){
         const title = (data.get("title")||"").toString().trim();
         if(!title) return alert("Please enter a task title.");
@@ -348,7 +352,6 @@
           else if(d) dayLock = d;
         }
 
-        // Overlap-aware duplicate scan
         const overlapCheck = (t) => {
           const sameFixed = (dayLock && t.dayLock && dayLock===t.dayLock);
           const sameDue   = (dueDate && t.dueDate && dueDate===t.dueDate);
@@ -417,8 +420,8 @@
             <input ref={ref} className="addbar-title" name="title" placeholder="➕ Add a new task…" />
             <div className="addbar-row">
               <label>Duration</label>
-              <input type="number" name="dur_h" min="0" defaultValue="1" className="w80"/> hr
-              <input type="number" name="dur_m" min="0" max="55" step="5" defaultValue="0" className="w80"/> min
+              <input type="number" inputMode="numeric" name="dur_h" min="0" defaultValue="1" className="w80"/> hr
+              <input type="number" inputMode="numeric" name="dur_m" min="0" max="55" step="5" defaultValue="0" className="w80"/> min
               <label>Priority</label>
               <select name="priority" defaultValue="2">
                 <option value="1">High</option>
@@ -457,33 +460,12 @@
         );
       }
 
-      /* ---------- Unscheduled Task Card (draggable) ---------- */
-      function TaskCard({t}){
-        return (
-          <div
-            className={"taskcard" + (t.priority===1?" high":"") + (t._missed?" missed":"")}
-            draggable
-            onDragStart={(e)=>{ setDragTaskId(t.id); e.dataTransfer.setData("text/plain", t.id); }}
-            onDragEnd={()=>{ setDragTaskId(null); }}
-          >
-            <div className="row">
-              <label className="chk"><input type="checkbox" checked={!!t.done} onChange={()=>toggleDone(t.id)} /> Done</label>
-              <div className="ttl">{t.title}</div>
-              <div className="row">
-                <button className="btn sm" onClick={()=>openEditorFor(t)}>✏️ Edit</button>
-              </div>
-            </div>
-            {t._original && <div className="orig">Originally {t._original.date}{t._original.time?(" • "+t._original.time):""}</div>}
-          </div>
-        );
-      }
-
-      /* ---------- Open/Edit/Delete Task (Modal) ---------- */
+      /* ---------- Task editor modal ---------- */
       function openEditorFor(t){
         const dur_h = Math.floor((t.duration||60)/60);
         const dur_m = (t.duration||60) % 60;
         const mode = t.flexible ? "flex" : "fixed";
-        const data = {
+        setEditor({
           id:t.id, title:t.title||"", dur_h, dur_m,
           priority:String(t.priority||2),
           calendar:t.calendar||"work",
@@ -493,8 +475,7 @@
           fixed_date: t.dayLock || (t.scheduledStart ? toKey(new Date(t.scheduledStart)) : ""),
           fixed_time: t.scheduledStart ? `${pad(new Date(t.scheduledStart).getHours())}:${pad(new Date(t.scheduledStart).getMinutes())}` : "",
           done: !!t.done
-        };
-        setEditor(data);
+        });
       }
       function saveEditor(){
         setTasks(prev=>prev.map(t=>{
@@ -543,16 +524,16 @@
                 <button className="btn" onClick={()=>setEditor(null)}>✖</button>
               </div>
 
-              <div className="row"><input type="text" value={editor.title} onChange={e=>setEditor({...editor, title:e.target.value})} placeholder="Title"/></div>
+              <div className="row"><input type="text" value={editor.title} onChange={e=>setEditor({...editor, title:e.target.value})} placeholder="Title" autoFocus/></div>
 
               <div className="row">
                 <div style={{flex:1}}>
                   <label>Hours</label>
-                  <input type="number" min="0" value={editor.dur_h} onChange={e=>setEditor({...editor, dur_h:e.target.value})}/>
+                  <input type="number" inputMode="numeric" min="0" value={editor.dur_h} onChange={e=>setEditor({...editor, dur_h:e.target.value})}/>
                 </div>
                 <div style={{flex:1}}>
                   <label>Minutes</label>
-                  <input type="number" min="0" max="55" step="5" value={editor.dur_m} onChange={e=>setEditor({...editor, dur_m:e.target.value})}/>
+                  <input type="number" inputMode="numeric" min="0" max="55" step="5" value={editor.dur_m} onChange={e=>setEditor({...editor, dur_m:e.target.value})}/>
                 </div>
               </div>
 
@@ -615,16 +596,18 @@
         );
       }
 
-      /* ---------- Day Column with Drag & Drop ---------- */
+      /* ---------- Day Column with Drag & Drop + Day Summary ---------- */
       function DayColumn({day}){
         const dayKey = toKey(day);
         const busy = busyBlocksOnDay(day);
-        const used = busy.reduce((s,b)=>s+b.duration,0);
+        const used = busy.reduce((s,b)=> s + (b.type==="task" ? b.duration : 0), 0);
         const cap = settings.dailyCapacityMins;
         const pct = Math.min(100, Math.round((used/cap)*100));
         const holidayName = holi.get(dayKey);
 
-        // unscheduled subset eligible for this day
+        const hasTasks = busy.some(b=>b.type==="task");
+        const allDone = hasTasks && busy.filter(b=>b.type==="task").every(b=>b.t.done);
+
         const unscheduled = tasks.filter(t => !t.scheduledStart && !t.done && matchesSearch(t) &&
           (!t.dayLock || t.dayLock===dayKey) &&
           (!t.windowStart || dayKey>=t.windowStart) &&
@@ -632,10 +615,10 @@
           t.dueDate <= dayKey
         ).sort((a,b)=> a.priority-b.priority || (a.dueDate>b.dueDate?1:-1));
 
-        // DnD handlers
         const slot = settings.slotSize;
         const dayRectRef = useRef(null);
         const [dropY, setDropY] = useState(null);
+        const [showSummary, setShowSummary] = useState(false);
 
         function nearestTimeFromClientY(clientY){
           const rect = dayRectRef.current?.getBoundingClientRect();
@@ -660,13 +643,21 @@
         function onDragLeave(){ setDropY(null); }
 
         return (
-          <div className={"daycol" + (dayKey===todayKey?" today":"") + (holidayName?" holiday":"")}>
-            <div className="dayhdr">
+          <div className={"daycol" + (dayKey===toKey(startOfDay(new Date()))?" today":"") + (holidayName?" holiday":"")}>
+            {allDone && <div className="day-ribbon" title="All tasks done!"></div>}
+            <div className="dayhdr" onClick={()=>setShowSummary(v=>!v)} style={{cursor:"pointer"}}>
               <div className="dname">{day.toLocaleDateString(undefined,{weekday:"short"})}</div>
               <div className="dnum">{day.getDate()}</div>
               <div className="cap"><span style={{width:pct+"%"}}/></div>
               {holidayName && <div className="holiday-name" title="Alberta Stat Holiday">{holidayName}</div>}
             </div>
+            {showSummary && (
+              <div className={"day-summary" + (pct>=100?" full":"")}>
+                <div><strong>Scheduled:</strong> {used} min</div>
+                <div><strong>Capacity used:</strong> {pct}%</div>
+                <div><strong>Free:</strong> {Math.max(0, cap - used)} min</div>
+              </div>
+            )}
 
             <div
               className={"busy" + (dragTaskId?" drag-target":"")}
@@ -686,7 +677,8 @@
                       "busyitem" +
                       (isTask?(b.t.priority===1?" high":""):"") +
                       (isTask && b.t._missed?" missed":"") +
-                      (dragTaskId=== (isTask? b.t.id : null) ? " dragging" : "")
+                      (dragTaskId=== (isTask? b.t.id : null) ? " dragging" : "") +
+                      (isTask && b.t.done ? " done" : "")
                     }
                     onClick={()=> isTask && openEditorFor(b.t)}
                     style={{cursor:isTask?"grab":"default"}}
@@ -727,7 +719,7 @@
         );
       }
 
-      /* ---------- App layout ---------- */
+      /* ---------- Left column + layout ---------- */
       const unscheduledGlobal = tasks.filter(t => !t.scheduledStart && !t.done && matchesSearch(t));
 
       return (
@@ -792,9 +784,9 @@
             </div>
           )}
 
-          <footer className="ftr">Chaos Control v3 • for <strong>dysfunctional adults managing total chaos</strong>.</footer>
+          <footer className="ftr">Chaos Control v3.1 • for <strong>dysfunctional adults managing total chaos</strong>.</footer>
 
-          {/* Modal lives at root so it overlays everything */}
+          {/* Modal at root */}
           <ModalEditor/>
         </div>
       );
