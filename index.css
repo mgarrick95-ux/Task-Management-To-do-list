@@ -1,5 +1,1 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-html,body,#root{height:100%;}
+@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\nhtml,body,#root{height:100%;}\n
