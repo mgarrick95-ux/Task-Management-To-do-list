@@ -1,4 +1,6 @@
-/* Chaos Control v3 — styles */
+/* Chaos Control v3 — styles
+   Light = pastel; Dark = rich hues */
+
 :root{
   --bg: #faf9f6;
   --panel: #f3f1ee;
@@ -21,9 +23,12 @@
   --low: #7aa4cf;
   --card: #262a31;
 }
+
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";}
+
 .wrap{max-width:1400px;margin:0 auto;padding:16px;}
+
 .hdr{display:flex;gap:12px;align-items:center;justify-content:space-between;position:relative;margin-bottom:12px;}
 .title{font-weight:800;font-size:22px;position:relative;letter-spacing:.3px}
 .word-chaos{position:relative;display:inline-block;padding:.1em .2em}
@@ -43,35 +48,43 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui, -a
 .btn.sm{padding:6px 8px;font-size:12px}
 .btn.xs{padding:4px 6px;font-size:11px}
 .date-picker{position:absolute;right:10px;top:44px;background:var(--card);border:1px solid #d1d5db;border-radius:12px;padding:8px;box-shadow:0 6px 20px rgba(0,0,0,.15)}
+
 .addbar{position:sticky;top:0;z-index:5;background:linear-gradient(to bottom, var(--panel), transparent);padding:8px;border-radius:12px;margin-bottom:12px;border:1px solid #d1d5db}
 .addbar-title{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #d1d5db;background:var(--card);margin-bottom:8px}
 .addbar-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .w80{width:80px}.w120{width:120px}.w140{width:140px}
 .seg{display:inline-flex;gap:8px;align-items:center;background:var(--card);padding:6px 8px;border-radius:999px;border:1px solid #d1d5db}
+
 .layout{display:grid;grid-template-columns:320px 1fr;gap:12px}
 .left .panel{background:var(--panel);border-radius:14px;padding:10px;border:1px solid #d1d5db;margin-bottom:12px}
 .panel-h{font-weight:700;margin-bottom:8px}
 .empty{color:var(--muted)}
+
 .main .week{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
 .daycol{background:var(--panel);border:1px solid #d1d5db;border-radius:14px;overflow:hidden;position:relative}
 .daycol.today{outline:2px solid var(--primary)}
 .daycol.holiday{background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,0)), var(--panel);}
 .holiday-name{font-size:12px;color:var(--muted);padding:4px 8px}
+
 .dayhdr{display:flex;align-items:center;gap:8px;padding:8px;background:var(--card);border-bottom:1px solid #d1d5db}
 .dname{font-weight:700;width:48px}
 .dnum{font-weight:800;font-size:18px}
 .cap{flex:1;height:6px;background:#e5e7eb;border-radius:6px;overflow:hidden}
 .cap span{display:block;height:6px;background:var(--primary)}
-.busy{padding:8px;display:flex;flex-direction:column;gap:8px}
-.busyitem{border:1px dashed #cbd5e1;border-radius:12px;padding:8px}
+
+.busy{padding:8px;display:flex;flex-direction:column;gap:8px;position:relative}
+.busyitem{border:1px dashed #cbd5e1;border-radius:12px;padding:8px;background:transparent}
 .busyitem.high .ttl{color:var(--high);font-weight:800}
 .busyitem.missed{border-style:dashed;animation:missed 1.2s steps(2,end) infinite}
-@keyframes missed{50%{opacity:.8}}
+@keyframes missed{50%{opacity:.85}}
+
 .unsched{border-top:1px dashed #d1d5db;padding:8px}
 .unsched-h{font-size:12px;color:var(--muted);margin-bottom:6px}
+
 .taskcard{background:var(--card);border:1px solid #d1d5db;border-radius:12px;padding:8px;margin-bottom:8px}
 .taskcard.high .ttl{color:var(--high);font-weight:800}
 .taskcard.missed{border-style:dashed}
+
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between}
 .row.right{justify-content:flex-end}
 .chk{display:inline-flex;gap:6px;align-items:center}
@@ -79,12 +92,35 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui, -a
 .meta{display:flex;gap:8px;color:var(--muted);font-size:12px}
 .badge{font-size:11px;background:#fee2e2;color:#991b1b;border-radius:999px;padding:2px 6px}
 .orig{font-size:12px;color:var(--muted);margin-top:4px}
+
 .toast{position:fixed;right:16px;bottom:16px;background:var(--card);border:1px solid #d1d5db;border-radius:14px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.2);display:flex;gap:10px;align-items:center;cursor:pointer;z-index:50}
 .toast .star{font-size:20px}
 .toast .msg{max-width:320px}
+
 .ftr{margin-top:16px;color:var(--muted);text-align:center}
+
+/* Confetti */
 .confetti{position:fixed;top:-10px;width:6px;height:10px;background:linear-gradient(#ffd166,#ef476f);opacity:.9;border-radius:2px;animation:drop 2.4s ease-in forwards;z-index:60}
 @keyframes drop{to{transform:translateY(100vh) rotate(540deg);opacity:.2}}
+
+/* --- Edit Modal --- */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:80}
+.modal{width:min(520px,94vw);background:var(--card);border:1px solid #d1d5db;border-radius:14px;padding:12px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal .mh{font-weight:800;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.modal .row{gap:10px;margin:6px 0}
+.modal label{font-size:13px;color:var(--muted)}
+.modal input[type="text"], .modal input[type="number"], .modal select, .modal input[type="date"], .modal input[type="time"]{
+  width:100%;padding:8px 10px;border-radius:10px;border:1px solid #d1d5db;background:var(--card);color:var(--text)
+}
+.modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.btn.danger{background:#b91c1c;color:#fff;border-color:#b91c1c}
+
+/* --- drag & drop --- */
+.busyitem.dragging { opacity: .5; outline: 2px dashed var(--muted); }
+.daycol.drag-target { outline: 2px dashed #64748b; outline-offset: 2px; }
+.drop-indicator { position:absolute; left:6px; right:6px; height:2px; background:#60a5fa; pointer-events:none; }
+
+/* Responsive */
 @media (max-width: 1100px){
   .layout{grid-template-columns:1fr}
   .main .week{grid-template-columns:repeat(3,1fr)}
