@@ -16,6 +16,7 @@
   <script type="text/babel">
     const {useState, useEffect, useMemo, useRef} = React;
 
+    /* ---------- Utilities ---------- */
     const pad = (n) => String(n).padStart(2, "0");
     const minutes = (h, m=0) => h*60 + m;
     const clamp = (x,a,b) => Math.max(a, Math.min(b, x));
@@ -27,30 +28,22 @@
     const startOfWeek = (d, weekStartsOn=1) => { const x=new Date(d); const day=(x.getDay()+7-weekStartsOn)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; };
     const humanTime = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     const endTime = (start, dur) => addMinutes(start, dur);
-    const sameMinute = (a,b) => a && b && a.getTime()===b.getTime();
     const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
+    /* ---------- Local Storage ---------- */
     const LS_TASKS="cc_tasks_v3_final";
     const LS_BLOCKS="cc_blocks_v3_final";
     const LS_SETTINGS="cc_settings_v3_final";
     const load = (k,fb) => { try { const raw=localStorage.getItem(k); return raw?JSON.parse(raw):fb } catch { return fb } };
     const save = (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} };
 
+    /* ---------- Alberta Holidays (current + next year) ---------- */
     function easterDate(year){
-      const a = year % 19;
-      const b = Math.floor(year / 100);
-      const c = year % 100;
-      const d = Math.floor(b / 4);
-      const e = b % 4;
-      const f = Math.floor((b + 8) / 25);
-      const g = Math.floor((b - f + 1) / 3);
-      const h = (19*a + b - d - g + 15) % 30;
-      const i = Math.floor(c / 4);
-      const k = c % 4;
-      const l = (32 + 2*e + 2*i - h - k) % 7;
-      const m = Math.floor((a + 11*h + 22*l) / 451);
-      const month = Math.floor((h + l - 7*m + 114) / 31);
-      const day = ((h + l - 7*m + 114) % 31) + 1;
+      const a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4;
+      const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+      const h = (19*a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+      const l = (32 + 2*e + 2*i - h - k) % 7, m = Math.floor((a + 11*h + 22*l) / 451);
+      const month = Math.floor((h + l - 7*m + 114) / 31), day = ((h + l - 7*m + 114) % 31) + 1;
       return new Date(year, month-1, day);
     }
     function nthDowOfMonth(year, monthIndex, dow, n){
@@ -69,15 +62,15 @@
       const list = [];
       const push = (d, name) => list.push({date: toKey(d), name});
       push(new Date(year,0,1), "New Year's Day");
-      push(nthDowOfMonth(year,1,1,3), "Family Day");
+      push(nthDowOfMonth(year,1,1,3), "Family Day");             // 3rd Mon Feb
       const easter = easterDate(year);
       const goodFriday = new Date(easter); goodFriday.setDate(easter.getDate()-2);
       push(goodFriday, "Good Friday");
-      push(lastDowBefore(year,4,24,1), "Victoria Day");
+      push(lastDowBefore(year,4,24,1), "Victoria Day");          // last Mon before May 25
       push(new Date(year,6,1), "Canada Day");
-      push(nthDowOfMonth(year,8,1,1), "Labour Day");
+      push(nthDowOfMonth(year,8,1,1), "Labour Day");             // 1st Mon Sept
       push(new Date(year,8,30), "National Day for Truth and Reconciliation");
-      push(nthDowOfMonth(year,9,1,2), "Thanksgiving");
+      push(nthDowOfMonth(year,9,1,2), "Thanksgiving");           // 2nd Mon Oct
       push(new Date(year,10,11), "Remembrance Day");
       push(new Date(year,11,25), "Christmas Day");
       push(new Date(year,11,26), "Boxing Day");
@@ -91,6 +84,7 @@
       return m;
     }
 
+    /* ---------- Smart-Ass messages ---------- */
     const SNARK_MILD = [
       "Well look at you, functioning adult of the year.",
       "Everything done? I’m as shocked as you are.",
@@ -103,41 +97,68 @@
       "You finished *everything*? Screenshot it before reality reloads.",
       "Task list annihilated. Chaos 0 – You 1.",
       "Achievement unlocked: Temporary competence.",
-      "Your to‑do list just filed for unemployment."
+      "Your to-do list just filed for unemployment."
     ];
 
+    /* ---------- Smarter duplicate detection ---------- */
+    const STOP = new Set("the,a,an,and,or,for,to,of,in,on,at,by,with,from,as,is,are,be,was,were,do,does,did,this,that,these,those,my,our,your,their".split(","));
+    function tokens(s){
+      return (s||"").toLowerCase().replace(/[^a-z0-9\s-]/g," ").split(/\s+/).filter(w=>w && !STOP.has(w));
+    }
+    function jaccard(a,b){
+      const A=new Set(tokens(a)), B=new Set(tokens(b));
+      if(A.size===0 || B.size===0) return 0;
+      let inter=0; for(const w of A) if(B.has(w)) inter++;
+      return inter / (A.size + B.size - inter);
+    }
+    function leadingNum(s){ const m = (s||"").match(/^\s*(\d{3,})/); return m?m[1]:null; }
+    function isLikelyDuplicate(titleA, titleB){
+      const numA = leadingNum(titleA), numB = leadingNum(titleB);
+      const sameNum = (numA && numB && numA===numB);
+      const sim = jaccard(titleA, titleB);
+      return sameNum || sim >= 0.58; // threshold tuned to avoid over-flag
+    }
+
+    /* ---------- App ---------- */
     function App(){
-      const holi = React.useMemo(()=>holidayMap(), []);
+      const holi = useMemo(()=>holidayMap(), []);
       const today = startOfDay(new Date());
+
       const [settings, setSettings] = useState(()=>load(LS_SETTINGS, {
-        workStartMins: 540,
-        workEndMins: 1020,
+        workStartMins: minutes(9,0),
+        workEndMins: minutes(17,0),
         slotSize: 30,
         weekStartsOn: 1,
-        dailyCapacityMins: 420,
+        dailyCapacityMins: 7*60,
         bufferMins: 5,
         preferMornings: true,
-        tone: "mild",
-        theme: "auto"
+        tone: "mild", // mild | chaos | random
+        theme: "auto" // auto | light | dark
       }));
       const [tasks, setTasks] = useState(()=>load(LS_TASKS, []));
       const [blocks, setBlocks] = useState(()=>load(LS_BLOCKS, []));
       const [anchorDate, setAnchorDate] = useState(()=> startOfWeek(today, settings.weekStartsOn));
-      const [selectedTaskId, setSelectedTaskId] = useState(null);
       const [search, setSearch] = useState("");
       const [showSnark, setShowSnark] = useState(null);
-      const [showDatePicker, setShowDatePicker] = useState(false);
+
+      /* NEW: editor modal state */
+      const [editor, setEditor] = useState(null); // {id, title, dur_h, dur_m, priority, mode, flexPreset/by, fixed_date, fixed_time, calendar, done}
+
+      /* NEW: drag & drop state */
+      const [dragTaskId, setDragTaskId] = useState(null);
 
       useEffect(()=>save(LS_SETTINGS, settings), [settings]);
       useEffect(()=>save(LS_TASKS, tasks), [tasks]);
       useEffect(()=>save(LS_BLOCKS, blocks), [blocks]);
 
+      // Theme
       useEffect(()=>{
         const preferDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         const dark = settings.theme === "dark" || (settings.theme==="auto" && preferDark);
         document.documentElement.classList.toggle("dark", dark);
       }, [settings.theme]);
 
+      // On load: move missed forward (pinned/fixed) & jump to this week
       useEffect(()=>{
         setTasks(prev => {
           const next = prev.map(t=>({...t}));
@@ -147,18 +168,15 @@
             if(t.scheduledStart){
               const s = new Date(t.scheduledStart);
               if(toKey(s) < nowKey){
-                const ns = addMinutes(today, settings.workStartMins);
                 t._original = t._original || { date: toKey(s), time: humanTime(s) };
-                t.scheduledStart = ns.toISOString();
+                t.scheduledStart = addMinutes(today, settings.workStartMins).toISOString();
                 t._missed = true;
               }
               continue;
             }
             if(t.dayLock && t.dayLock < nowKey){
-              const ns = addMinutes(today, settings.workStartMins);
               t._original = t._original || { date: t.dayLock, time: null };
               t.dayLock = toKey(today);
-              t.scheduledStart = ns.toISOString();
               t._missed = true;
             }
           }
@@ -167,16 +185,18 @@
         setAnchorDate(startOfWeek(today, settings.weekStartsOn));
       }, []);
 
-      const calmap = React.useMemo(()=> ({
+      // Calendars (colors)
+      const calmap = useMemo(()=> ({
         work:   {id:"work", name:"Work",    color:"#2563eb"},
         team:   {id:"team", name:"Team",    color:"#16a34a"},
         personal:{id:"personal", name:"Home", color:"#9333ea"},
       }), []);
 
-      const weekDays = React.useMemo(()=> Array.from({length:7}, (_,i)=> addMinutes(anchorDate, i*1440)), [anchorDate]);
+      const weekDays = useMemo(()=> Array.from({length:7}, (_,i)=> addMinutes(anchorDate, i*1440)), [anchorDate]);
       const todayKey = toKey(today);
 
-      const searchTokens = React.useMemo(()=> search.trim().toLowerCase().split(/\s+/).filter(Boolean), [search]);
+      // Search
+      const searchTokens = useMemo(()=> search.trim().toLowerCase().split(/\s+/).filter(Boolean), [search]);
       function matchesSearch(t){
         if(searchTokens.length===0) return true;
         const hay = [
@@ -191,39 +211,27 @@
         return searchTokens.every(tok => hay.includes(tok));
       }
 
-      function findSimilarTasks(candidate){
-        const norm = (s) => (s||"").toLowerCase();
-        const nums = (s) => (s||"").match(/\d+/g)||[];
-        const cTitle = norm(candidate.title);
-        const cNums = nums(cTitle).join("|");
-        const cDay = candidate.fixedDate || candidate.dayLock || candidate.windowEnd || candidate.dueDate;
-        return tasks.filter(t=>{
-          if(!t.id || t.id===candidate.id) return false;
-          const tTitle = norm(t.title);
-          const shareNum = cNums && tTitle.match(new RegExp(cNums.replace(/\|/g,"|")));
-          const shareWord = cTitle && tTitle.split(/\W+/).some(w => w.length>3 && tTitle.includes(w));
-          const sameDay = cDay && (t.dayLock===cDay || (t.scheduledStart && toKey(new Date(t.scheduledStart))===cDay));
-          return (shareNum || shareWord) && sameDay;
-        });
-      }
-
+      // Busy blocks for a day (tasks+blocks)
       function busyBlocksOnDay(dayDate){
         const dayKey = toKey(dayDate);
         const busy = [];
-        for(const b of blocks){
-          const s = new Date(b.startISO);
-          if(toKey(s)===dayKey) busy.push({start:s, duration:b.duration, title:b.title, type:"block", calendar:b.calendar, blockId:b.id});
-        }
+        // tasks
         for(const t of tasks){
           if(!t.scheduledStart || t.done) continue;
           const s = new Date(t.scheduledStart);
-          if(toKey(s)===dayKey) busy.push({start:s, duration:t.duration, title:t.title, type:"task", calendar:t.calendar, taskId:t.id, t});
+          if(toKey(s)===dayKey) busy.push({start:s, duration:t.duration, title:t.title, type:"task", calendar:t.calendar, t});
+        }
+        // (optional) blocks if you add them later
+        for(const b of blocks){
+          const s = new Date(b.startISO);
+          if(toKey(s)===dayKey) busy.push({start:s, duration:b.duration, title:b.title, type:"block", calendar:b.calendar});
         }
         busy.sort((a,b)=>a.start-b.start);
         return busy;
       }
 
-      function autoSchedule(selectedOnly=false){
+      // Auto-scheduler
+      function autoSchedule(){
         setTasks(prev=>{
           const next = prev.map(t=>({...t, _moved:false}));
           const workStart = settings.workStartMins, workEnd=settings.workEndMins;
@@ -242,7 +250,6 @@
 
           const candidates = next
             .filter(t=>!t.done)
-            .filter(t=> selectedOnly ? t.id===selectedTaskId : true)
             .sort((a,b)=> a.priority-b.priority || (a.dueDate>b.dueDate?1:-1));
 
           for(const t of candidates){
@@ -255,7 +262,8 @@
             for(let d=0; d<days && !placed; d++){
               const day = addMinutes(rangeStart, d*1440);
               const dayKey = toKey(day);
-              if (holidayMap().has(dayKey)) continue;
+              if (holi.has(dayKey)) continue;
+
               const busy = busyBlocksOnDay(day);
               const used = busy.reduce((s,b)=>s+b.duration,0);
               if(used + t.duration > settings.dailyCapacityMins) continue;
@@ -281,24 +289,24 @@
 
       function clearSchedules(){ setTasks(prev=>prev.map(t=>({...t, scheduledStart:null, _moved:false}))); }
 
+      // Done + gold star
       function toggleDone(id){
         setTasks(prev=>{
           const next = prev.map(t=> t.id===id ? ({...t, done:!t.done}) : t);
           setTimeout(()=>{
-            const anyToday = next.some(t=> t.scheduledStart && toKey(new Date(t.scheduledStart)) === toKey(startOfDay(new Date())) );
-            const allDoneToday = anyToday && next.filter(t=> t.scheduledStart && toKey(new Date(t.scheduledStart)) === toKey(startOfDay(new Date())) ).every(t=>t.done);
+            const anyToday = next.some(t=> t.scheduledStart && toKey(new Date(t.scheduledStart))===todayKey);
+            const allDoneToday = anyToday && next.filter(t=> t.scheduledStart && toKey(new Date(t.scheduledStart))===todayKey).every(t=>t.done);
             if(allDoneToday){
               const pool = settings.tone==="random" ? [...SNARK_MILD, ...SNARK_CHAOS] :
                            settings.tone==="chaos" ? SNARK_CHAOS : SNARK_MILD;
               const msg = pool[Math.floor(Math.random()*pool.length)];
-              setShowSnark({msg, when: Date.now()});
+              setShowSnark({msg});
               confettiBurst();
             }
           }, 50);
           return next;
         });
       }
-
       function confettiBurst(){
         const root = document.body;
         for(let i=0;i<40;i++){
@@ -311,12 +319,13 @@
         }
       }
 
+      /* ---------- Add Task (with smarter duplicate check) ---------- */
       function addTaskFromForm(data){
         const title = (data.get("title")||"").toString().trim();
         if(!title) return alert("Please enter a task title.");
         const durH = parseInt((data.get("dur_h")||"0"),10)||0;
         const durM = parseInt((data.get("dur_m")||"0"),10)||0;
-        const duration = Math.max(5, Math.min(24*60, (durH*60 + durM || 30)));
+        const duration = clamp(durH*60 + durM || 30, 5, 24*60);
         const priority = parseInt((data.get("priority")||"2"),10)||2;
         const calendar = (data.get("calendar")||"work").toString();
         const mode = (data.get("mode")||"flex").toString();
@@ -325,30 +334,32 @@
         if(mode==="flex"){
           const preset=(data.get("flex_preset")||"today").toString();
           const base = startOfDay(new Date());
-          if(preset==="today"){
-            windowStart = toKey(base); windowEnd = toKey(base);
-          }else if(preset==="next2"){
-            windowStart = toKey(base); windowEnd = toKey(addMinutes(base, 1440));
-          }else if(preset==="thisweek"){
-            windowStart = toKey(base);
-            const end = addMinutes(startOfWeek(base, settings.weekStartsOn), 6*1440);
-            windowEnd = toKey(end);
-          }else{
-            const by=(data.get("flex_by")||toKey(base)).toString();
-            windowStart = toKey(base); windowEnd = by;
-          }
+          if(preset==="today"){ windowStart = toKey(base); windowEnd = toKey(base); }
+          else if(preset==="next2"){ windowStart = toKey(base); windowEnd = toKey(addMinutes(base, 1440)); }
+          else if(preset==="thisweek"){ windowStart = toKey(base); windowEnd = toKey(addMinutes(startOfWeek(base, settings.weekStartsOn), 6*1440)); }
+          else { const by=(data.get("flex_by")||toKey(base)).toString(); windowStart=toKey(base); windowEnd=by; }
           dueDate = windowEnd;
         } else {
           flexible=false;
           const d = (data.get("fixed_date")||"").toString();
-          if(!d) return alert("Pick a date for fixed or pinned task.");
           const t = (data.get("fixed_time")||"").toString();
-          dueDate = d;
-          if(t){
-            scheduledStart = new Date(`${d}T${t}:00`).toISOString();
-          } else {
-            dayLock = d;
-          }
+          dueDate = d || toKey(new Date());
+          if(d && t) scheduledStart = new Date(`${d}T${t}:00`).toISOString();
+          else if(d) dayLock = d;
+        }
+
+        // Overlap-aware duplicate scan
+        const overlapCheck = (t) => {
+          const sameFixed = (dayLock && t.dayLock && dayLock===t.dayLock);
+          const sameDue   = (dueDate && t.dueDate && dueDate===t.dueDate);
+          const overlapFlex = (!dayLock && !t.dayLock) && (windowStart<=t.windowEnd && t.windowStart<=windowEnd);
+          return sameFixed || sameDue || overlapFlex;
+        };
+        const dups = tasks.filter(t => overlapCheck(t) && isLikelyDuplicate(title, t.title));
+        if(dups.length){
+          const names = dups.slice(0,3).map(d=>`• ${d.title}`).join("\n");
+          const ok = confirm(`Heads up — this looks similar:\n${names}\n\nAdd anyway?`);
+          if(!ok) return;
         }
 
         const newTask = {
@@ -356,94 +367,43 @@
           flexible, windowStart, windowEnd, dayLock, scheduledStart, dueDate,
           done:false, _moved:false, _missed:false
         };
-
-        const sim = findSimilarTasks({title, dayLock: dayLock || (scheduledStart?toKey(new Date(scheduledStart)):dueDate), id:newTask.id});
-        if(sim.length){
-          if(!confirm(`Possible duplicate on same day:
-- ${sim[0].title}
-Add anyway?`)){
-            return;
-          }
-        }
-
         setTasks(prev=>[newTask, ...prev]);
       }
 
+      /* ---------- Reschedule helpers ---------- */
       function rescheduleTask(id, days){
         setTasks(prev=>prev.map(t=>{
           if(t.id!==id) return t;
           let s = t.scheduledStart ? new Date(t.scheduledStart) : (t.dayLock? parseKey(t.dayLock) : startOfDay(new Date()));
           s.setDate(s.getDate()+days);
           t._original = t._original || {date: t.dayLock || (t.scheduledStart?toKey(new Date(t.scheduledStart)):null), time: t.scheduledStart?humanTime(new Date(t.scheduledStart)):null};
-          if(t.scheduledStart){
-            t.scheduledStart = s.toISOString();
-          } else {
-            t.dayLock = toKey(s);
-          }
+          if(t.scheduledStart){ t.scheduledStart = s.toISOString(); } else { t.dayLock = toKey(s); }
           t._missed = true;
           return {...t};
         }));
       }
 
-      function exportICS(){
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Chaos Control//EN\n";
-        for(const t of tasks){
-          if(!t.scheduledStart) continue;
-          const start = new Date(t.scheduledStart);
-          const end = endTime(start, t.duration);
-          const dt = (d)=> (
-            d.getUTCFullYear().toString() +
-            pad(d.getUTCMonth()+1) + pad(d.getUTCDate()) + "T" +
-            pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + "00Z"
-          );
-          ics += "BEGIN:VEVENT\n";
-          ics += "UID:" + t.id + "@chaos-control\n";
-          ics += "DTSTAMP:" + dt(new Date()) + "\n";
-          ics += "DTSTART:" + dt(start) + "\n";
-          ics += "DTEND:" + dt(end) + "\n";
-          ics += "SUMMARY:" + (t.priority===1?"[HIGH] ":"") + t.title.replace(/\n/g," ") + "\n";
-          ics += "END:VEVENT\n";
-        }
-        ics += "END:VCALENDAR\n";
-        const blob = new Blob([ics], {type:"text/calendar"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = "chaos-control-schedule.ics"; a.click();
-        URL.revokeObjectURL(url);
-      }
-
+      /* ---------- Header ---------- */
       function Header(){
         return (
           <header className="hdr">
             <div className="title">
-              <span className="word-chaos">
-                <span className="bomb-bg" aria-hidden="true"></span>
-                Chaos
-              </span>{" "}
-              Control — Smart Scheduler
+              <span className="word-chaos"><span className="bomb-bg" aria-hidden="true"></span>Chaos</span> Control — Smart Scheduler
             </div>
             <div className="hdr-tools">
-              <input className="search" placeholder="🔍 Search tasks… (try: high, missed, Oct 23)"
+              <input className="search" placeholder="🔍 Search tasks… (e.g., high, missed, Oct 23)"
                 value={search} onChange={(e)=>setSearch(e.target.value)} />
-              <button className="btn" onClick={()=>setShowDatePicker(v=>!v)} title="Pick a date">📅</button>
               <button className="btn" onClick={()=>setAnchorDate(addMinutes(anchorDate, -7*1440))} title="Prev week">« Wk</button>
               <button className="btn" onClick={()=>setAnchorDate(addMinutes(anchorDate, -1*1440))} title="Prev day">‹ Day</button>
-              <button className="btn primary" onClick={()=>setAnchorDate(startOfWeek(startOfDay(new Date()), settings.weekStartsOn))} title="Today">Today</button>
+              <button className="btn primary" onClick={()=>setAnchorDate(startOfWeek(startOfDay(new Date()), settings.weekStartsOn))} title="Go to today">Today</button>
               <button className="btn" onClick={()=>setAnchorDate(addMinutes(anchorDate, 1*1440))} title="Next day">Day ›</button>
               <button className="btn" onClick={()=>setAnchorDate(addMinutes(anchorDate, 7*1440))} title="Next week">Wk »</button>
-              <button className="btn" onClick={exportICS} title="Export .ics">📤</button>
             </div>
-            {showDatePicker && (
-              <div className="date-picker">
-                <input type="date" onChange={(e)=>{
-                  if(e.target.value){ const d = parseKey(e.target.value); setAnchorDate(startOfWeek(d, settings.weekStartsOn)); setShowDatePicker(false); }
-                }}/>
-              </div>
-            )}
           </header>
         );
       }
 
+      /* ---------- Add Task Bar ---------- */
       function AddBar(){
         const ref = useRef();
         return (
@@ -490,44 +450,181 @@ Add anyway?`)){
                 <option value="personal">Home</option>
               </select>
               <button className="btn primary" type="submit">Add</button>
-              <button className="btn" type="button" onClick={()=>autoSchedule(false)}>Auto-Schedule</button>
+              <button className="btn" type="button" onClick={autoSchedule}>Auto-Schedule</button>
               <button className="btn" type="button" onClick={clearSchedules}>Clear</button>
             </div>
           </form>
         );
       }
 
+      /* ---------- Unscheduled Task Card (draggable) ---------- */
       function TaskCard({t}){
-        const color = calmap[t.calendar]?.color || "#334155";
         return (
-          <div className={"taskcard" + (t.priority===1?" high":"") + (t._missed?" missed":"")} style={{borderColor: color}}>
+          <div
+            className={"taskcard" + (t.priority===1?" high":"") + (t._missed?" missed":"")}
+            draggable
+            onDragStart={(e)=>{ setDragTaskId(t.id); e.dataTransfer.setData("text/plain", t.id); }}
+            onDragEnd={()=>{ setDragTaskId(null); }}
+          >
             <div className="row">
               <label className="chk"><input type="checkbox" checked={!!t.done} onChange={()=>toggleDone(t.id)} /> Done</label>
               <div className="ttl">{t.title}</div>
-              <div className="meta">
-                <span>{t.duration} min</span>
-                <span>{t.priority===1?"High":t.priority===3?"Low":"Med"}</span>
-                {t._missed && <span className="badge">Missed</span>}
+              <div className="row">
+                <button className="btn sm" onClick={()=>openEditorFor(t)}>✏️ Edit</button>
               </div>
             </div>
             {t._original && <div className="orig">Originally {t._original.date}{t._original.time?(" • "+t._original.time):""}</div>}
-            <div className="row right">
-              <button className="btn sm" onClick={()=>rescheduleTask(t.id, 1)}>+1 day</button>
-              <button className="btn sm" onClick={()=>rescheduleTask(t.id, 2)}>+2 days</button>
-              <button className="btn sm" onClick={()=>rescheduleTask(t.id, 7)}>+1 week</button>
+          </div>
+        );
+      }
+
+      /* ---------- Open/Edit/Delete Task (Modal) ---------- */
+      function openEditorFor(t){
+        const dur_h = Math.floor((t.duration||60)/60);
+        const dur_m = (t.duration||60) % 60;
+        const mode = t.flexible ? "flex" : "fixed";
+        const data = {
+          id:t.id, title:t.title||"", dur_h, dur_m,
+          priority:String(t.priority||2),
+          calendar:t.calendar||"work",
+          mode,
+          flexPreset:"today",
+          flex_by: t.windowEnd || toKey(new Date()),
+          fixed_date: t.dayLock || (t.scheduledStart ? toKey(new Date(t.scheduledStart)) : ""),
+          fixed_time: t.scheduledStart ? `${pad(new Date(t.scheduledStart).getHours())}:${pad(new Date(t.scheduledStart).getMinutes())}` : "",
+          done: !!t.done
+        };
+        setEditor(data);
+      }
+      function saveEditor(){
+        setTasks(prev=>prev.map(t=>{
+          if(!editor || t.id!==editor.id) return t;
+          const duration = clamp((parseInt(editor.dur_h||0)*60 + parseInt(editor.dur_m||0)), 5, 24*60);
+          let flexible=true, windowStart=toKey(new Date()), windowEnd=toKey(new Date()), dayLock=null, scheduledStart=null, dueDate=windowEnd;
+
+          if(editor.mode==="flex"){
+            const base=startOfDay(new Date());
+            const preset=editor.flexPreset||"today";
+            if(preset==="today"){ windowStart=toKey(base); windowEnd=toKey(base); }
+            else if(preset==="next2"){ windowStart=toKey(base); windowEnd=toKey(addMinutes(base,1440)); }
+            else if(preset==="thisweek"){ windowStart=toKey(base); windowEnd=toKey(addMinutes(startOfWeek(base, settings.weekStartsOn), 6*1440)); }
+            else { windowStart=toKey(base); windowEnd=editor.flex_by || toKey(base); }
+            dueDate = windowEnd;
+          } else {
+            flexible=false;
+            const d = editor.fixed_date || "";
+            const tm = editor.fixed_time || "";
+            dueDate = d || t.dueDate;
+            if(d && tm){ scheduledStart = new Date(`${d}T${tm}:00`).toISOString(); }
+            else if(d){ dayLock = d; }
+          }
+
+          return {
+            ...t,
+            title:editor.title.trim()||t.title,
+            duration,
+            priority:parseInt(editor.priority||"2",10)||2,
+            calendar:editor.calendar||t.calendar,
+            flexible, windowStart, windowEnd, dayLock, scheduledStart, dueDate,
+            done: !!editor.done
+          };
+        }));
+        setEditor(null);
+      }
+      function deleteTask(id){ setTasks(prev=>prev.filter(t=>t.id!==id)); setEditor(null); }
+
+      function ModalEditor(){
+        if(!editor) return null;
+        return (
+          <div className="modal-backdrop" onClick={()=>setEditor(null)}>
+            <div className="modal" onClick={(e)=>e.stopPropagation()}>
+              <div className="mh">
+                <div>Edit Task</div>
+                <button className="btn" onClick={()=>setEditor(null)}>✖</button>
+              </div>
+
+              <div className="row"><input type="text" value={editor.title} onChange={e=>setEditor({...editor, title:e.target.value})} placeholder="Title"/></div>
+
+              <div className="row">
+                <div style={{flex:1}}>
+                  <label>Hours</label>
+                  <input type="number" min="0" value={editor.dur_h} onChange={e=>setEditor({...editor, dur_h:e.target.value})}/>
+                </div>
+                <div style={{flex:1}}>
+                  <label>Minutes</label>
+                  <input type="number" min="0" max="55" step="5" value={editor.dur_m} onChange={e=>setEditor({...editor, dur_m:e.target.value})}/>
+                </div>
+              </div>
+
+              <div className="row">
+                <div style={{flex:1}}>
+                  <label>Priority</label>
+                  <select value={editor.priority} onChange={e=>setEditor({...editor, priority:e.target.value})}>
+                    <option value="1">High</option><option value="2">Medium</option><option value="3">Low</option>
+                  </select>
+                </div>
+                <div style={{flex:1}}>
+                  <label>Calendar</label>
+                  <select value={editor.calendar} onChange={e=>setEditor({...editor, calendar:e.target.value})}>
+                    <option value="work">Work</option><option value="team">Team</option><option value="personal">Home</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="row">
+                <div className="seg">
+                  <label><input type="radio" checked={editor.mode==="flex"} onChange={()=>setEditor({...editor, mode:"flex"})}/> Flexible</label>
+                  <label><input type="radio" checked={editor.mode==="fixed"} onChange={()=>setEditor({...editor, mode:"fixed"})}/> Fixed</label>
+                </div>
+              </div>
+
+              {editor.mode==="flex" ? (
+                <div className="row">
+                  <div className="seg">
+                    <label><input type="radio" name="fp" checked={editor.flexPreset==="today"} onChange={()=>setEditor({...editor, flexPreset:"today"})}/> Today</label>
+                    <label><input type="radio" name="fp" checked={editor.flexPreset==="next2"} onChange={()=>setEditor({...editor, flexPreset:"next2"})}/> Next 2d</label>
+                    <label><input type="radio" name="fp" checked={editor.flexPreset==="thisweek"} onChange={()=>setEditor({...editor, flexPreset:"thisweek"})}/> This week</label>
+                    <label><input type="radio" name="fp" checked={editor.flexPreset==="by"} onChange={()=>setEditor({...editor, flexPreset:"by"})}/> By date</label>
+                    <input type="date" value={editor.flex_by} onChange={e=>setEditor({...editor, flex_by:e.target.value})}/>
+                  </div>
+                </div>
+              ) : (
+                <div className="row">
+                  <div style={{flex:1}}>
+                    <label>Fixed date</label>
+                    <input type="date" value={editor.fixed_date||""} onChange={e=>setEditor({...editor, fixed_date:e.target.value})}/>
+                  </div>
+                  <div style={{flex:1}}>
+                    <label>time</label>
+                    <input type="time" value={editor.fixed_time||""} onChange={e=>setEditor({...editor, fixed_time:e.target.value})}/>
+                  </div>
+                </div>
+              )}
+
+              <div className="row">
+                <label className="chk"><input type="checkbox" checked={!!editor.done} onChange={e=>setEditor({...editor, done:e.target.checked})}/> Mark complete</label>
+              </div>
+
+              <div className="actions">
+                <button className="btn danger" onClick={()=>deleteTask(editor.id)}>Delete</button>
+                <button className="btn" onClick={()=>setEditor(null)}>Cancel</button>
+                <button className="btn primary" onClick={saveEditor}>Save</button>
+              </div>
             </div>
           </div>
         );
       }
 
+      /* ---------- Day Column with Drag & Drop ---------- */
       function DayColumn({day}){
         const dayKey = toKey(day);
         const busy = busyBlocksOnDay(day);
         const used = busy.reduce((s,b)=>s+b.duration,0);
         const cap = settings.dailyCapacityMins;
         const pct = Math.min(100, Math.round((used/cap)*100));
-        const holidayName = holidayMap().get(dayKey);
+        const holidayName = holi.get(dayKey);
 
+        // unscheduled subset eligible for this day
         const unscheduled = tasks.filter(t => !t.scheduledStart && !t.done && matchesSearch(t) &&
           (!t.dayLock || t.dayLock===dayKey) &&
           (!t.windowStart || dayKey>=t.windowStart) &&
@@ -535,34 +632,84 @@ Add anyway?`)){
           t.dueDate <= dayKey
         ).sort((a,b)=> a.priority-b.priority || (a.dueDate>b.dueDate?1:-1));
 
+        // DnD handlers
+        const slot = settings.slotSize;
+        const dayRectRef = useRef(null);
+        const [dropY, setDropY] = useState(null);
+
+        function nearestTimeFromClientY(clientY){
+          const rect = dayRectRef.current?.getBoundingClientRect();
+          if(!rect) return null;
+          const y = Math.max(0, Math.min(clientY - rect.top, rect.height));
+          const minsRange = settings.workEndMins - settings.workStartMins;
+          const minutePerPixel = minsRange / rect.height;
+          let mins = Math.round(y * minutePerPixel / slot) * slot;
+          mins = Math.max(0, Math.min(mins, minsRange - slot));
+          const when = addMinutes(startOfDay(day), settings.workStartMins + mins);
+          return when;
+        }
+        function onDragOver(e){ if(dragTaskId){ e.preventDefault(); setDropY(e.clientY); } }
+        function onDrop(e){
+          if(!dragTaskId) return;
+          e.preventDefault();
+          const start = nearestTimeFromClientY(e.clientY);
+          if(!start) return;
+          setTasks(prev=>prev.map(t => t.id===dragTaskId ? ({...t, scheduledStart:start.toISOString(), dayLock:null, flexible:false, _missed:false}) : t));
+          setDragTaskId(null); setDropY(null);
+        }
+        function onDragLeave(){ setDropY(null); }
+
         return (
-          <div className={"daycol" + (dayKey===toKey(startOfDay(new Date()))?" today":"") + (holidayName?" holiday":"")}>
+          <div className={"daycol" + (dayKey===todayKey?" today":"") + (holidayName?" holiday":"")}>
             <div className="dayhdr">
               <div className="dname">{day.toLocaleDateString(undefined,{weekday:"short"})}</div>
               <div className="dnum">{day.getDate()}</div>
               <div className="cap"><span style={{width:pct+"%"}}/></div>
               {holidayName && <div className="holiday-name" title="Alberta Stat Holiday">{holidayName}</div>}
             </div>
-            <div className="busy">
+
+            <div
+              className={"busy" + (dragTaskId?" drag-target":"")}
+              ref={dayRectRef}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              onDragLeave={onDragLeave}
+            >
+              {dropY && <div className="drop-indicator" style={{ top: (dropY - (dayRectRef.current?.getBoundingClientRect()?.top||0)) + 'px' }} />}
+
               {busy.map((b,i)=>{
-                const color = calmap[b.calendar]?.color || "#334155";
                 const isTask = b.type==="task";
                 return (
-                  <div key={i} className={"busyitem"+(isTask?(b.t.priority===1?" high":""):"")+(isTask && b.t._missed?" missed":"")}
-                       style={{borderColor: color, backgroundColor: color+"22"}}>
+                  <div
+                    key={i}
+                    className={
+                      "busyitem" +
+                      (isTask?(b.t.priority===1?" high":""):"") +
+                      (isTask && b.t._missed?" missed":"") +
+                      (dragTaskId=== (isTask? b.t.id : null) ? " dragging" : "")
+                    }
+                    onClick={()=> isTask && openEditorFor(b.t)}
+                    style={{cursor:isTask?"grab":"default"}}
+                    draggable={isTask}
+                    onDragStart={(e)=>{ if(isTask){ setDragTaskId(b.t.id); e.dataTransfer.setData("text/plain", b.t.id); } }}
+                    onDragEnd={()=>{ setDragTaskId(null); setDropY(null); }}
+                  >
                     <div className="row">
                       <div className="time">{humanTime(b.start)}–{humanTime(endTime(b.start, b.duration))}</div>
                       {isTask && (
-                        <label className="chk"><input type="checkbox" checked={!!b.t.done} onChange={()=>toggleDone(b.t.id)} /> Done</label>
+                        <div className="row">
+                          <label className="chk"><input type="checkbox" checked={!!b.t.done} onChange={(e)=>{e.stopPropagation(); toggleDone(b.t.id);}} /> Done</label>
+                          <button className="btn xs" onClick={(e)=>{e.stopPropagation(); openEditorFor(b.t);}}>✏️</button>
+                        </div>
                       )}
                     </div>
                     <div className="ttl">{b.title}</div>
                     {isTask && b.t._original && <div className="orig">Originally {b.t._original.date}{b.t._original.time?(" • "+b.t._original.time):""}</div>}
                     {isTask && (
                       <div className="row right">
-                        <button className="btn xs" onClick={()=>rescheduleTask(b.t.id, 1)}>+1d</button>
-                        <button className="btn xs" onClick={()=>rescheduleTask(b.t.id, 2)}>+2d</button>
-                        <button className="btn xs" onClick={()=>rescheduleTask(b.t.id, 7)}>+1w</button>
+                        <button className="btn xs" onClick={(e)=>{e.stopPropagation(); rescheduleTask(b.t.id, 1);}}>+1d</button>
+                        <button className="btn xs" onClick={(e)=>{e.stopPropagation(); rescheduleTask(b.t.id, 2);}}>+2d</button>
+                        <button className="btn xs" onClick={(e)=>{e.stopPropagation(); rescheduleTask(b.t.id, 7);}}>+1w</button>
                       </div>
                     )}
                   </div>
@@ -580,6 +727,7 @@ Add anyway?`)){
         );
       }
 
+      /* ---------- App layout ---------- */
       const unscheduledGlobal = tasks.filter(t => !t.scheduledStart && !t.done && matchesSearch(t));
 
       return (
@@ -603,16 +751,10 @@ Add anyway?`)){
                 <div className="row">
                   <label>Workday</label>
                   <input type="time" value={`${String(Math.floor(settings.workStartMins/60)).padStart(2,"0")}:${String(settings.workStartMins%60).padStart(2,"0")}`}
-                    onChange={(e)=>{
-                      const [h,m]=e.target.value.split(":").map(Number);
-                      setSettings(s=>({...s, workStartMins: h*60+m}));
-                    }}/>
+                    onChange={(e)=>{ const [h,m]=e.target.value.split(":").map(Number); setSettings(s=>({...s, workStartMins: minutes(h,m)})); }}/>
                   <span>–</span>
                   <input type="time" value={`${String(Math.floor(settings.workEndMins/60)).padStart(2,"0")}:${String(settings.workEndMins%60).padStart(2,"0")}`}
-                    onChange={(e)=>{
-                      const [h,m]=e.target.value.split(":").map(Number);
-                      setSettings(s=>({...s, workEndMins: h*60+m}));
-                    }}/>
+                    onChange={(e)=>{ const [h,m]=e.target.value.split(":").map(Number); setSettings(s=>({...s, workEndMins: minutes(h,m)})); }}/>
                 </div>
                 <div className="row">
                   <label>Tone</label>
@@ -631,7 +773,7 @@ Add anyway?`)){
                   </select>
                 </div>
                 <div className="row">
-                  <button className="btn" onClick={()=>autoSchedule(false)}>Auto-Schedule All</button>
+                  <button className="btn" onClick={autoSchedule}>Auto-Schedule All</button>
                 </div>
               </div>
             </aside>
@@ -651,6 +793,9 @@ Add anyway?`)){
           )}
 
           <footer className="ftr">Chaos Control v3 • for <strong>dysfunctional adults managing total chaos</strong>.</footer>
+
+          {/* Modal lives at root so it overlays everything */}
+          <ModalEditor/>
         </div>
       );
     }
