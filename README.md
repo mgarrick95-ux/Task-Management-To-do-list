@@ -1,4 +1,4 @@
-# Chaos Control — Smart Scheduler v3
+# Chaos Control — Smart Scheduler v3. 
 
 A beautifully unhinged productivity app with flexible scheduling, pinned days, Alberta holiday awareness, search, duplicate detection, and a gold-star reward system that talks back.
 
