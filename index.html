@@ -1,26 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chaos Control — Smart Scheduler</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chaos Control — Smart Scheduler</title>
+    <link rel="icon" type="image/png" href="favicon.png" />
+  </head>
 
-  <!-- Prevent stale cache -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
+  <body>
+    <div id="root"></div>
 
-  <!-- Styles -->
-  <link rel="stylesheet" href="index.css?v=34" />
-  <link rel="icon" href="favicon.ico" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-</head>
-<body>
-  <div id="root"></div>
-
-  <!-- Main script (now plain JS) -->
-  <script src="App.js?v=34"></script>
-
-  <noscript>This app requires JavaScript to run.</noscript>
-</body>
+    <!-- Main React entry point -->
+    <script type="module" src="./main.jsx"></script>
+  </body>
 </html>
