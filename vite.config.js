@@ -3,6 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // IMPORTANT: set this to match your repo name exactly
-  base: '/Task-Management-To-do-list/',
+  base: '/Task-Management-To-do-list/',  // <- your repo name, case-sensitive
 })
