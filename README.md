@@ -1,19 +1,14 @@
-# Chaos Control — Smart Scheduler v4 (Static)!
+# Chaos Control — Smart Scheduler v4 (Static)
 
-A zero‑build, GitHub Pages–friendly app. Upload these files to your repo root and push to **main**.
+A beautifully unhinged productivity app with flexible scheduling, pinned days, Alberta holiday awareness, search, export/import, recurring tasks, and a gold-star reward when you finish the day. Built to help dysfunctional adults manage total chaos (with style).
 
-**Included features**
-- Recurring tasks (daily • weekdays • weekly • monthly-by-date) with optional end date
-- Flexible vs Fixed (fixed stays pinned; missed items roll forward as **Rescheduled**)
-- Capacity warning; day stats show **Scheduled** / **Free** in hours:minutes
-- Reminders list (overdue or soon + high-priority)
-- Search, export/import (JSON)
-- “Clear inputs” vs “Clear entire schedule”
-- Gold star + quip (and chime) when today is fully complete
+## How to update
+1. Replace `index.html`, `styles.css`, `app.js`, `404.html`, `bomb-muted.svg`, and (optionally) `ding.mp3`.
+2. Commit to the `main` branch. GitHub Pages serves the files instantly (no Actions needed).
 
-**Local storage keys**
-- `cc_tasks_v40`, `cc_settings_v40`
+## Data
+Your tasks and preferences are stored in **localStorage** in the browser. Export/Import lives in the header.
 
-**Deploy on GitHub Pages**
-- Keep the provided `.github/workflows/deploy.yml`
-- Commit to `main`; Actions publishes automatically
+---
+
+**Tagline:** _“Chaos Control v4 — proudly powered by dysfunctional adults managing total chaos.”_
