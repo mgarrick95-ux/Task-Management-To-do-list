@@ -1,261 +1,529 @@
+/* Chaos Control — Smart Scheduler v4 (Stable+)
+ * - auto-closing reward modal (+click & ESC)
+ * - confetti burst + optional ding
+ * - Alberta stat holidays block days
+ * - export/import, theme, flexible & fixed, repeats
+ * Data persists in localStorage.
+*/
 
-/* Full static app logic */
-(() => {
-  const LS_TASKS = "cc_tasks_v40";
-  const LS_SETTINGS = "cc_settings_v40";
-  const $ = (s,p=document)=>p.querySelector(s);
-  const toast = (m)=>{ const t=$("#toast"); t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); };
-  const ding = ()=>{ const a=$("#ding"); try{ a.currentTime=0; a.play().catch(()=>{});}catch(e){} }
+const LS_TASKS = "cc_tasks_v4";
+const LS_SETTINGS = "cc_settings_v4";
 
-  const AB_HOLIDAYS_2025 = new Set(["2025-01-01","2025-02-17","2025-04-18","2025-05-19","2025-07-01","2025-08-04","2025-09-01","2025-10-13","2025-11-11","2025-12-25","2025-12-26"]);
+// ===== Utilities
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+const save = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+const load = (k, fb=null) => {
+  try { return JSON.parse(localStorage.getItem(k)) ?? fb; }
+  catch { return fb; }
+};
+const pad2 = n => String(n).padStart(2,"0");
+const toKey = d => d.toISOString().slice(0,10);
 
-  let tasks = load(LS_TASKS, []);
-  let settings = load(LS_SETTINGS, { start:"09:00", end:"17:00", theme:"auto", weekStart:1 });
+// ===== DOM refs
+const themeBtn = $("#themeBtn");
+const exportBtn = $("#exportBtn");
+const importBtn = $("#importBtn");
 
-  const el = {
-    title: $("#taskTitle"),
-    durHr: $("#durHr"),
-    durMin: $("#durMin"),
-    prio: $("#prio"),
-    whenFlex: $('input[name="when"][value="flex"]'),
-    whenFixed: $('input[name="when"][value="fixed"]'),
-    flexRow: $("#flexRow"), fixedRow: $("#fixedRow"),
-    flexPreset: $("#flexPreset"),
-    fixedDate: $("#fixedDate"), fixedTime: $("#fixedTime"),
-    recPattern: $("#recPattern"), recEnd: $("#recEnd"),
-    calSel: $("#calendar"),
-    unscheduled: $("#unscheduled"), reminders: $("#reminders"),
-    searchBox: $("#searchBox"), searchResults: $("#searchResults"),
-    startTime: $("#startTime"), endTime: $("#endTime"), tone: $("#tone"),
-    grid: $("#calendarGrid"),
-    prevWeek: $("#prevWeek"), nextWeek: $("#nextWeek"), todayBtn: $("#todayBtn"),
-    btnAdd: $("#btnAdd"), btnAuto: $("#btnAuto"),
-    btnClear: $("#btnClearInputs"), btnClearAll: $("#btnClearAll"),
-    btnSearch: $("#btnSearch"), btnTheme: $("#btnTheme"),
-    btnExport: $("#btnExport"), btnImport: $("#btnImport"), importFile: $("#importFile"),
-    starModal: $("#starModal"), starClose: $("#starClose"), quip: $("#quip")
+const form = $("#taskForm");
+const title = $("#title");
+const durHr = $("#durHr");
+const durMin = $("#durMin");
+const priority = $("#priority");
+const repeatSel = $("#repeat");
+const calSel = $("#calendar");
+const addBtn = $("#addBtn");
+const autoBtn = $("#autoBtn");
+const clearInputsBtn = $("#clearInputsBtn");
+const clearDayBtn = $("#clearDayBtn");
+
+const flexOpts = $("#flexOpts");
+const fixedOpts = $("#fixedOpts");
+const byDate = $("#byDate");
+const fixedDate = $("#fixedDate");
+const fixedTime = $("#fixedTime");
+
+const urgentList = $("#urgentList");
+const taskList = $("#taskList");
+const unscheduledEmpty = $("#unscheduledEmpty");
+
+const calendarEl = $("#calendarEl");
+const prevWeek = $("#prevWeek");
+const todayBtn = $("#todayBtn");
+const nextWeek = $("#nextWeek");
+const autoAllBtn = $("#autoAllBtn");
+
+// reward modal
+const reward = $("#reward");
+const rewardClose = $("#rewardClose");
+const rewardLine = $("#rewardLine");
+
+// audio + confetti
+const ding = $("#ding");
+const confettiCanvas = $("#confetti");
+const ctx = confettiCanvas.getContext("2d");
+
+// ===== State
+let tasks = load(LS_TASKS, []);
+let settings = load(LS_SETTINGS, {
+  theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+  workStartMins: 9*60,
+  workEndMins: 17*60,
+  slot: 30
+});
+let startOfWeek = startOf(new Date());
+
+// ===== Holidays (Alberta, minimal set; adjust yearly)
+function albertaHolidays(year) {
+  // YYYY-MM-DD -> label
+  const E = easter(year); // Easter Sunday (computus)
+  const goodFriday = addDays(E, -2);
+  const familyDay = nthWeekdayOfMonth(year,2,1,1,3); // 3rd Monday in Feb
+  const victoriaDay = lastWeekdayBefore(year,5,24,1); // Mon before May 25
+  const labour = nthWeekdayOfMonth(year,9,1,1,1); // first Mon Sep
+  const thanksgiving = nthWeekdayOfMonth(year,10,1,1,2); // 2nd Mon Oct
+  const holidays = {
+    [`${year}-01-01`]: "New Year’s Day",
+    [toKey(goodFriday)]: "Good Friday",
+    [`${year}-07-01`]: "Canada Day",
+    [`${year}-08-05`]: "Heritage Day (AB)",
+    [toKey(labour)]: "Labour Day",
+    [toKey(thanksgiving)]: "Thanksgiving",
+    [`${year}-11-11`]: "Remembrance Day",
+    [`${year}-12-25`]: "Christmas Day",
+    [toKey(familyDay)]: "Family Day",
+    [toKey(victoriaDay)]: "Victoria Day",
+  };
+  return holidays;
+}
+// helpers for holidays
+function startOf(d){ const x=new Date(d); x.setHours(0,0,0,0); const dow=(x.getDay()+6)%7; return addDays(x,-dow); }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function nthWeekdayOfMonth(y,m,weekday,firstDay=1,n=1){
+  // weekday: 1 Monday ... 5 Friday, m: 1..12
+  const start = new Date(y, m-1, firstDay);
+  let count=0, d=new Date(start);
+  while (d.getMonth()===m-1) {
+    const wd=((d.getDay()+6)%7)+1;
+    if (wd===weekday) { count++; if (count===n) return d; }
+    d.setDate(d.getDate()+1);
+  }
+  return start; // fallback
+}
+function lastWeekdayBefore(y,m,day,weekday){
+  const d=new Date(y,m-1,day);
+  while((((d.getDay()+6)%7)+1)!==weekday){ d.setDate(d.getDate()-1); }
+  return d;
+}
+// Meeus/Jones/Butcher
+function easter(Y){
+  const a=Y%19,b=Math.floor(Y/100),c=Y%100,d=Math.floor(b/4),e=b%4,
+        f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),
+        h=(19*a+b-d-g+15)%30, i=Math.floor(c/4), k=c%4,
+        L=(32+2*e+2*i-h-k)%7, m=Math.floor((a+11*h+22*L)/451),
+        month=Math.floor((h+L-7*m+114)/31), day=((h+L-7*m+114)%31)+1;
+  return new Date(Y, month-1, day);
+}
+
+// ===== Rendering
+function render(){
+  renderUnscheduled();
+  renderCalendar();
+  renderUrgent();
+  save(LS_TASKS, tasks);
+}
+
+function renderUnscheduled(){
+  const uns = tasks.filter(t=>!t.scheduledAt);
+  taskList.innerHTML = "";
+  unscheduledEmpty.classList.toggle("hide", uns.length>0);
+  uns.forEach(t=>{
+    const li=document.createElement("li");
+    li.className="li";
+    const meta = t.fixed ? "fixed" : "flex";
+    li.innerHTML = `
+      <input type="checkbox" ${t.done?"checked":""} data-id="${t.id}" class="doneBox"/>
+      <div style="flex:1 1 auto">
+        <div>${escapeHTML(t.title)}</div>
+        <div class="meta">${t.duration}m • ${t.priority} • ${t.calendar} • ${meta}</div>
+      </div>
+      <button class="btn ghost smallBtn" data-act="edit" data-id="${t.id}">Edit</button>
+      <button class="btn ghost smallBtn" data-act="del" data-id="${t.id}">Del</button>
+    `;
+    taskList.appendChild(li);
+  });
+}
+
+function renderUrgent(){
+  const urgent = tasks.filter(t=>t.priority==="High" && !t.done);
+  urgentList.innerHTML="";
+  urgent.forEach(t=>{
+    const li=document.createElement("li");
+    li.className="li";
+    li.innerHTML = `<div style="flex:1 1 auto"><b>${escapeHTML(t.title)}</b><div class="meta">${t.calendar}</div></div>`;
+    urgentList.appendChild(li);
+  });
+}
+
+function renderCalendar(){
+  calendarEl.innerHTML="";
+  const year = startOfWeek.getFullYear();
+  const hol = albertaHolidays(year);
+  for(let i=0;i<7;i++){
+    const day = addDays(startOfWeek,i);
+    const key = toKey(day);
+    const col = document.createElement("div");
+    col.className = "col"+(hol[key]?" holiday":"");
+    const cap = day.toLocaleDateString(undefined,{weekday:"short", month:"short", day:"numeric"});
+    const dayTasks = tasks.filter(t=>t.scheduledAt && t.scheduledAt.startsWith(key));
+    const used = dayTasks.reduce((a,t)=>a+t.duration,0);
+    const capacity = settings.workEndMins-settings.workStartMins;
+    const usedPct = Math.min(100, Math.round(100*used/capacity));
+
+    col.innerHTML = `
+      <div class="colhead">
+        <div style="font-weight:700">${cap}</div>
+        <div class="meter"><i style="width:${usedPct}%"></i></div>
+      </div>
+      <div class="slot" data-key="${key}"></div>
+      <div class="list" id="d-${key}"></div>
+    `;
+    const list = col.querySelector(".list");
+    if(hol[key]){
+      const b = document.createElement("div");
+      b.className="block fixed";
+      b.innerHTML = `<div class="row"><b>${hol[key]}</b><span class="small">Holiday</span></div>`;
+      list.appendChild(b);
+    }
+
+    dayTasks.forEach(t=>{
+      const row=document.createElement("div");
+      row.className="block "+(t.fixed?"fixed ":"")+(t.priority==="High"?"high ":"")+(t.done?"done ":"");
+      const timeStr = t.scheduledAt.slice(11,16);
+      row.innerHTML = `
+        <div class="row">
+          <div><b>${escapeHTML(t.title)}</b></div>
+          <div class="small">${timeStr} • ${t.duration}m</div>
+        </div>
+        <div class="row small">
+          <div>${t.calendar} • ${t.priority}${t.rescheduled?" • bumped":""}</div>
+          <div>
+            <input type="checkbox" ${t.done?"checked":""} class="doneBox" data-id="${t.id}"/>
+            <button class="btn ghost smallBtn" data-act="edit" data-id="${t.id}">Edit</button>
+            <button class="btn ghost smallBtn" data-act="unsched" data-id="${t.id}">Unsch</button>
+          </div>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+
+    calendarEl.appendChild(col);
+  }
+}
+
+// ===== Scheduling
+function scheduleFlexible(t){
+  // window based on flex choice
+  const now = new Date();
+  let from = startOf(now), to = addDays(from,6);
+  if (t.flex==="today"){ from=startOf(now); to=addDays(from,0); }
+  else if (t.flex==="next2d"){ from=startOf(now); to=addDays(from,2); }
+  else if (t.flex==="week"){ from=startOf(now); to=addDays(from,6); }
+  else if (t.flex==="bydate" && t.flexDate){ from=new Date(t.flexDate); to=new Date(t.flexDate); }
+
+  // prefer chosen date, keep non-urgent items bumpable
+  const cap = settings.workEndMins-settings.workStartMins;
+  const hol = albertaHolidays(from.getFullYear());
+
+  for(let d=new Date(from); d<=to; d=addDays(d,1)){
+    const key = toKey(d);
+    if (hol[key]) continue; // skip holidays
+    const dayItems = tasks.filter(x=>x.scheduledAt && x.scheduledAt.startsWith(key));
+    const used = dayItems.reduce((a,x)=>a+x.duration,0);
+    if (used + t.duration > cap) continue; // try next day
+    // find next time slot
+    let mins = settings.workStartMins;
+    const taken = dayItems.map(x=>hmToMin(x.scheduledAt.slice(11,16)));
+    while (mins+t.duration <= settings.workEndMins){
+      const conflict = taken.includes(mins);
+      if (!conflict){
+        t.scheduledAt = `${key}T${minToHM(mins)}`;
+        return true;
+      }
+      mins += settings.slot;
+    }
+  }
+  return false;
+}
+
+function scheduleFixed(t){
+  if (!t.fixedDate) return false;
+  const key = t.fixedDate;
+  const hol = albertaHolidays(new Date(key).getFullYear());
+  if (hol[key]) return false;
+
+  // set a time (default if missing: first free slot)
+  let timeMins = t.fixedTime ? hmToMin(t.fixedTime) : settings.workStartMins;
+  const dayItems = tasks.filter(x=>x.scheduledAt && x.scheduledAt.startsWith(key));
+  const cap = settings.workEndMins-settings.workStartMins;
+  const used = dayItems.reduce((a,x)=>a+x.duration,0);
+  if (used + t.duration > cap) return false;
+
+  const taken = dayItems.map(x=>hmToMin(x.scheduledAt.slice(11,16)));
+  while (timeMins + t.duration <= settings.workEndMins){
+    if (!taken.includes(timeMins)){
+      t.scheduledAt = `${key}T${minToHM(timeMins)}`;
+      return true;
+    }
+    timeMins += settings.slot;
+  }
+  return false;
+}
+
+// ===== Actions
+form.addEventListener("change", e=>{
+  const when = form.elements["when"].value;
+  flexOpts.classList.toggle("hide", when!=="flex");
+  fixedOpts.classList.toggle("hide", when!=="fixed");
+});
+
+form.addEventListener("submit", e=>{
+  e.preventDefault();
+  const when = form.elements["when"].value;
+  const dur = (+durHr.value||0)*60 + (+durMin.value||0);
+  if (!title.value.trim() || dur<=0) return;
+
+  const task = {
+    id: crypto.randomUUID(),
+    title: title.value.trim(),
+    duration: dur,
+    priority: priority.value,
+    calendar: calSel.value,
+    repeat: repeatSel.value,
+    done:false,
+    fixed: when==="fixed",
+    flex: when==="flex" ? form.elements["flex"].value : null,
+    flexDate: when==="flex" && form.elements["flex"].value==="bydate" ? byDate.value||null : null,
+    fixedDate: when==="fixed" ? (fixedDate.value||null) : null,
+    fixedTime: when==="fixed" ? (fixedTime.value||null) : null,
+    rescheduled:false
   };
 
-  // Theme
-  function applyTheme(){
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const light = settings.theme==="auto" ? !prefersDark : (settings.theme==="mild");
-    document.documentElement.classList.toggle("light", light);
-  }
-  applyTheme();
-
-  // Utils
-  function load(k,fb){ try{return JSON.parse(localStorage.getItem(k)) ?? fb}catch{return fb} }
-  function saveAll(){ localStorage.setItem(LS_TASKS, JSON.stringify(tasks)); localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }
-  const uid = ()=> Math.random().toString(36).slice(2,10);
-  const dateKey = (d)=> d.toISOString().slice(0,10);
-  const todayKey = ()=> dateKey(new Date());
-  const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x };
-  const parseHM = (s)=>{ if(!s) return null; const [h,m]=s.split(':').map(Number); return h*60+m; };
-  const hm = (m)=> `${Math.floor(m/60)} hr ${String(m%60).padStart(2,'0')} min`;
-  const cap = s=> s? s.charAt(0).toUpperCase()+s.slice(1): s;
-  const esc = s=> (s||"").replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-
-  let cursor = startOfWeek(new Date());
-  function startOfWeek(d){ const x=new Date(d); const wd=(x.getDay()+7-settings.weekStart)%7; x.setDate(x.getDate()-wd); x.setHours(0,0,0,0); return x; }
-
-  rolloverMissed();
-
-  function render(){ saveAll(); renderUnscheduled(); renderReminders(); renderWeek(); }
-  function workCapacity(){ return parseHM(settings.end)-parseHM(settings.start); }
-  function dayEntries(key){ return tasks.filter(t=> t.slot && t.slot.date===key); }
-  function dayStats(key){ const entries=dayEntries(key); const used=entries.reduce((a,t)=>a+t.duration,0); return {used, free:Math.max(0,workCapacity()-used), entries}; }
-
-  function renderUnscheduled(){
-    const list = tasks.filter(t=>!t.slot);
-    el.unscheduled.innerHTML = list.length ? "" : `<li class="muted">Nothing here — everything else is on the calendar.</li>`;
-    for(const t of list){
-      const li=document.createElement('li'); li.className='task';
-      li.innerHTML = `<div class="row"><div><span class="badge ${t.priority==='high'?'high':''}">${cap(t.priority)}</span> <strong>${esc(t.title)}</strong></div><div class="meta"><span>${hm(t.duration)}</span>${t.flexNote?` <span class="badge">${esc(t.flexNote)}</span>`:""}</div></div><div class="meta"><button data-act="place" class="secondary">Place</button><button data-act="edit" class="ghost">Edit</button><button data-act="del" class="danger">Delete</button></div>`;
-      li.addEventListener('click', e=>taskAction(e,t.id)); el.unscheduled.appendChild(li);
-    }
+  if (task.fixed ? scheduleFixed(task) : scheduleFlexible(task)) {
+    tasks.push(task);
+  } else {
+    // leave unscheduled but pinned to chosen day if provided
+    if (task.fixed && task.fixedDate) task.scheduledAt = `${task.fixedDate}T${task.fixedTime||"09:00"}`;
+    tasks.push(task);
   }
 
-  function renderReminders(){
-    el.reminders.innerHTML=""; const now=new Date();
-    const urgent = tasks.filter(t=> t.slot && !t.done).filter(t=>{
-      const dt=new Date(t.slot.date+"T"+(t.slot.time??"09:00")+":00");
-      return (dt<now) || (t.priority==='high' && dt-now<36*60*60*1000);
-    });
-    for(const t of urgent){
-      const li=document.createElement('li'); li.className='task';
-      li.innerHTML = `<div class="row"><strong>${esc(t.title)}</strong><span class="badge resched">${t.slot.date} ${t.slot.time??""}</span></div>`;
-      el.reminders.appendChild(li);
-    }
-  }
+  // repeats create future clones (basic)
+  createRepeats(task);
 
-  function renderWeek(){
-    el.grid.innerHTML="";
-    for(let i=0;i<7;i++){
-      const d=addDays(cursor,i); const key=dateKey(d);
-      const {used, free, entries}=dayStats(key);
-      const day=document.createElement('div'); day.className='day'+(AB_HOLIDAYS_2025.has(key)?' warn':'');
-      const head=document.createElement('div'); head.className='day-head';
-      head.innerHTML = `<div><strong>${d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}</strong></div><div class="stats">Scheduled: ${hm(used)} &nbsp;&nbsp; Free: ${hm(free)}</div>`;
-      day.appendChild(head);
-      const slot=document.createElement('div'); slot.className='slot';
-      entries.sort((a,b)=>(a.slot.time??"99:99").localeCompare(b.slot.time??"99:99"));
-      for(const t of entries){
-        const card=document.createElement('div'); card.className='entry'+(t.done?' done':'');
-        const timeStr=t.slot.time?t.slot.time:'(any)';
-        card.innerHTML = `<div class="row"><div class="title">${esc(t.title)}</div><div class="ctrls"><input type="checkbox" ${t.done?"checked":""} data-act="toggle" title="Mark complete"><button class="ghost" data-act="edit" title="Edit">✎</button><button class="ghost" data-act="move" title="Move">⇄</button><button class="danger" data-act="del" title="Delete">✕</button></div></div><div class="meta"><span class="badge ${t.priority==='high'?'high':''}">${cap(t.priority)}</span><span>${timeStr}</span><span>${hm(t.duration)}</span>${t.rescheduled?'<span class="badge resched">Rescheduled</span>':''}</div>`;
-        card.addEventListener('click', e=>taskAction(e,t.id,key)); slot.appendChild(card);
-      }
-      if(used>workCapacity()) day.classList.add('warn');
-      day.appendChild(slot); el.grid.appendChild(day);
-      if(key===todayKey() && entries.length && entries.every(x=>x.done)){ setTimeout(()=>celebrate(), 20); }
-    }
-  }
-
-  function celebrate(){
-    const quips=[
-      "All done — look at you, a responsible tornado.",
-      "Everything finished. The productivity gods are mildly impressed.",
-      "Gold star earned. HR can’t ding you for today.",
-      "You cleared the board. Treat yo’ self."
-    ];
-    $("#quip").textContent = quips[(Math.random()*quips.length)|0];
-    $("#starModal").classList.remove("hidden"); ding();
-  }
-  el.starClose.addEventListener('click', ()=> el.starModal.classList.add('hidden'));
-
-  function taskAction(e,id){
-    const btn=e.target.closest('[data-act]'); if(!btn) return;
-    e.preventDefault(); e.stopPropagation();
-    const act=btn.getAttribute('data-act');
-    const idx=tasks.findIndex(t=>t.id===id); if(idx<0) return; const t=tasks[idx];
-    if(act==='del'){ tasks.splice(idx,1); render(); return; }
-    if(act==='toggle'){ t.done=!t.done; render(); return; }
-    if(act==='edit'){ loadIntoForm(t); tasks.splice(idx,1); render(); toast("Loaded into the form. Edit & Add to save."); return; }
-    if(act==='move'){ if(t.slot){ t.slot=null; } else { t.slot={date: todayKey(), time:null}; } render(); return; }
-    if(act==='place'){ t.slot={date: todayKey(), time:null}; render(); return; }
-  }
-
-  function loadIntoForm(t){
-    el.title.value=t.title;
-    el.durHr.value=Math.floor(t.duration/60);
-    el.durMin.value=t.duration%60;
-    el.prio.value=t.priority;
-    if(t.slot){ el.whenFixed.checked=true; showWhen(); el.fixedDate.value=t.slot.date; el.fixedTime.value=t.slot.time??""; }
-    else { el.whenFlex.checked=true; showWhen(); }
-    el.calSel.value=t.calendar||"work";
-    if(t.rec){ el.recPattern.value=t.rec.pattern; el.recEnd.value=t.rec.end||""; } else { el.recPattern.value="none"; el.recEnd.value=""; }
-  }
-
-  $("#btnAdd").addEventListener('click', ()=>{
-    const title=(el.title.value||"").trim();
-    const dur=(parseInt(el.durHr.value||"0",10)*60)+(parseInt(el.durMin.value||"0",10));
-    if(!title) return toast("Need a title.");
-    if(!Number.isFinite(dur)||dur<=0) return toast("Duration must be > 0");
-    const base={ id:uid(), title, duration:dur, priority:el.prio.value, calendar:el.calSel.value, done:false, rescheduled:false };
-    let slot=null, flexNote="";
-    if(el.whenFixed.checked){
-      if(!el.fixedDate.value) return toast("Pick a fixed date.");
-      slot={date: el.fixedDate.value, time: el.fixedTime.value || null};
-    }else{
-      const m={today:"Flex: today", next2:"Flex: next 2d", week:"Flex: this week", none:"Flex: any time"};
-      flexNote=m[el.flexPreset.value]||"";
-    }
-    let rec=null; if(el.recPattern.value!=="none"){ rec={pattern:el.recPattern.value, end: el.recEnd.value || null}; }
-    const first={...base, slot, flexNote, rec};
-    const items = expandRecurring(first);
-    tasks.push(...items);
-    clearInputs(); render();
-  });
-
-  function expandRecurring(item){
-    if(!item.rec) return [item];
-    const out=[]; const end=item.rec.end? new Date(item.rec.end) : addDays(new Date(), 28);
-    let d=item.slot?.date? new Date(item.slot.date) : new Date();
-    const base={...item}; delete base.rec;
-    const addAt = (day)=>{ const ni={...base, id:uid()}; ni.slot=item.slot? {...item.slot, date: dateKey(day)}: null; out.push(ni); };
-    while(d<=end){
-      addAt(d);
-      if(item.rec.pattern==="daily") d=addDays(d,1);
-      else if(item.rec.pattern==="weekdays"){ d=addDays(d,1); while([0,6].includes(d.getDay())) d=addDays(d,1); }
-      else if(item.rec.pattern==="weekly") d=addDays(d,7);
-      else if(item.rec.pattern==="monthly-date"){ const m=d.getMonth(); d=new Date(d.getFullYear(),m+1,d.getDate()); }
-      else break;
-    }
-    return out;
-  }
-
-  $("#btnAuto").addEventListener('click', ()=>{ autoSchedule(); render(); });
-
-  function autoSchedule(){
-    const weekKeys=Array.from({length:7},(_,i)=> dateKey(addDays(cursor,i)));
-    for(const t of tasks){
-      if(t.slot) continue;
-      const pref={ "Flex: today":[0], "Flex: next 2d":[0,1,2], "Flex: this week":[0,1,2,3,4,5,6], "Flex: any time":[0,1,2,3,4,5,6] }[t.flexNote||"Flex: any time"] || [0,1,2,3,4,5,6];
-      let placed=false;
-      for(const i of pref){
-        const dk=weekKeys[i]; const {free}=dayStats(dk);
-        if(free>=t.duration){ t.slot={date:dk, time:null}; placed=true; break; }
-      }
-      if(!placed) t.slot={date: weekKeys.at(-1), time:null};
-    }
-  }
-
-  function rolloverMissed(){
-    const now=todayKey(); let changed=false;
-    for(const t of tasks){
-      if(t.slot && t.slot.date<now && !t.done){
-        const options=[0,1,2,3,4,5,6].map(i=> dateKey(addDays(new Date(),i)));
-        for(const dk of options){
-          const {free}=dayStats(dk);
-          if(free>=t.duration){ t.slot.date=dk; t.rescheduled=true; changed=true; break; }
-        }
-      }
-    }
-    if(changed) saveAll();
-  }
-
-  $("#btnSearch").addEventListener('click', ()=>{
-    const q=(el.searchBox.value||"").toLowerCase();
-    const res=tasks.filter(t=> t.title.toLowerCase().includes(q));
-    el.searchResults.innerHTML = res.length ? res.map(t=>`<li class="task"><strong>${esc(t.title)}</strong> <span class="meta">${t.slot? t.slot.date+" "+(t.slot.time??""):"unscheduled"}</span></li>`).join("") : "<li class='muted'>No matches.</li>";
-  });
-
-  function clearInputs(){
-    el.title.value=""; el.durHr.value=1; el.durMin.value=0;
-    el.prio.value="med"; el.whenFlex.checked=true; showWhen();
-    el.fixedDate.value=""; el.fixedTime.value="";
-    el.recPattern.value="none"; el.recEnd.value="";
-  }
-  el.btnClear.addEventListener('click', clearInputs);
-  el.btnClearAll.addEventListener('click', ()=>{ if(confirm("Erase ALL tasks?")){ tasks=[]; render(); } });
-
-  function showWhen(){ el.fixedRow.classList.toggle('hidden', !el.whenFixed.checked); el.flexRow.classList.toggle('hidden', !el.whenFlex.checked); }
-  el.whenFixed.addEventListener('change', showWhen); el.whenFlex.addEventListener('change', showWhen);
-
-  el.prevWeek.addEventListener('click', ()=>{ cursor=addDays(cursor,-7); render(); });
-  el.nextWeek.addEventListener('click', ()=>{ cursor=addDays(cursor, 7); render(); });
-  el.todayBtn.addEventListener('click', ()=>{ cursor=startOfWeek(new Date()); render(); });
-
-  el.startTime.addEventListener('change', ()=>{ settings.start=el.startTime.value; render(); });
-  el.endTime.addEventListener('change',   ()=>{ settings.end=el.endTime.value; render(); });
-  el.tone.addEventListener('change', ()=>{ settings.theme=el.tone.value; applyTheme(); saveAll(); });
-  el.btnTheme.addEventListener('click', ()=>{ settings.theme = settings.theme==='auto' ? 'mild' : settings.theme==='mild' ? 'zesty' : 'auto'; el.tone.value=settings.theme; applyTheme(); saveAll(); toast("Theme: "+settings.theme); });
-
-  el.btnExport.addEventListener('click', ()=>{
-    const blob=new Blob([JSON.stringify({tasks,settings},null,2)],{type:"application/json"});
-    const url=URL.createObjectURL(blob); const a=document.createElement('a');
-    a.href=url; a.download="chaos-control-backup.json"; a.click(); URL.revokeObjectURL(url);
-  });
-  el.btnImport.addEventListener('click', ()=> el.importFile.click());
-  el.importFile.addEventListener('change', async ()=>{
-    const f=el.importFile.files[0]; if(!f) return;
-    try{ const data=JSON.parse(await f.text());
-      if(Array.isArray(data.tasks)) tasks=data.tasks;
-      if(data.settings) settings={...settings, ...data.settings};
-      render(); toast("Imported.");
-    }catch{ alert("Invalid JSON"); }
-  });
-
+  form.reset();
+  durHr.value=1; durMin.value=0; priority.value="Medium";
   render();
-})();
+});
+
+function createRepeats(base){
+  const addClone=(d)=>{
+    const c={...base,id:crypto.randomUUID(),done:false,rescheduled:false};
+    if (c.fixed){
+      c.fixedDate = toKey(d);
+      c.fixedTime = base.fixedTime||null;
+      c.scheduledAt = null;
+      scheduleFixed(c);
+    }else{
+      c.flexDate = toKey(d);
+      c.flex = "bydate";
+      c.scheduledAt = null;
+      scheduleFlexible(c);
+    }
+    tasks.push(c);
+  };
+
+  if (base.repeat==="daily"){
+    for(let i=1;i<=4;i++) addClone(addDays(parseISO(base.scheduledAt||base.fixedDate||toKey(new Date())), i));
+  } else if (base.repeat==="weekly"){
+    for(let i=1;i<=3;i++) addClone(addDays(parseISO(base.scheduledAt||base.fixedDate||toKey(new Date())), i*7));
+  } else if (base.repeat==="mowf"){
+    let d=parseISO(base.scheduledAt||base.fixedDate||toKey(new Date()));
+    for(let i=1;i<=9;i++){
+      d=addDays(d,1);
+      const wd=d.getDay();
+      if (wd!==0 && wd!==6) addClone(d);
+    }
+  }
+}
+
+autoBtn.addEventListener("click", ()=>{
+  // schedule only currently unscheduled
+  tasks.filter(t=>!t.scheduledAt).forEach(t=>{
+    (t.fixed ? scheduleFixed(t) : scheduleFlexible(t));
+  });
+  render();
+});
+
+autoAllBtn.addEventListener("click", ()=>{
+  tasks.forEach(t=>{
+    if (t.scheduledAt) return;
+    (t.fixed ? scheduleFixed(t) : scheduleFlexible(t));
+  });
+  render();
+});
+
+clearInputsBtn.addEventListener("click", ()=>form.reset());
+
+// day navigation
+prevWeek.addEventListener("click", ()=>{ startOfWeek = addDays(startOfWeek,-7); render(); });
+nextWeek.addEventListener("click", ()=>{ startOfWeek = addDays(startOfWeek,7); render(); });
+todayBtn.addEventListener("click", ()=>{ startOfWeek = startOf(new Date()); render(); });
+
+// list interactions
+document.addEventListener("click", e=>{
+  const id = e.target.dataset?.id;
+  const act = e.target.dataset?.act;
+  if (e.target.classList.contains("doneBox")){
+    const t = tasks.find(x=>x.id===id);
+    if (t){ t.done = e.target.checked; render(); maybeCelebrateDay(); }
+  } else if (act==="del"){
+    tasks = tasks.filter(x=>x.id!==id);
+    render();
+  } else if (act==="unsched"){
+    const t = tasks.find(x=>x.id===id);
+    if (t){ t.scheduledAt=null; render(); }
+  } else if (act==="edit"){
+    const t = tasks.find(x=>x.id===id);
+    if (!t) return;
+    // lightweight inline edit: move values to form
+    title.value = t.title;
+    durHr.value = Math.floor(t.duration/60);
+    durMin.value = t.duration%60;
+    priority.value = t.priority;
+    calSel.value = t.calendar;
+    repeatSel.value = t.repeat||"none";
+    if (t.fixed){
+      form.elements["when"].value="fixed";
+      fixedOpts.classList.remove("hide");
+      flexOpts.classList.add("hide");
+      fixedDate.value = t.scheduledAt ? t.scheduledAt.slice(0,10) : t.fixedDate||"";
+      fixedTime.value = t.scheduledAt ? t.scheduledAt.slice(11,16) : (t.fixedTime||"");
+    }else{
+      form.elements["when"].value="flex";
+      flexOpts.classList.remove("hide");
+      fixedOpts.classList.add("hide");
+    }
+    // delete original (edit-as-new)
+    tasks = tasks.filter(x=>x.id!==id);
+    render();
+  }
+});
+
+// clear entire schedule of current week -> celebration
+clearDayBtn.addEventListener("click", ()=>{
+  const keys = [...Array(7)].map((_,i)=>toKey(addDays(startOfWeek,i)));
+  tasks.forEach(t=>{
+    if (t.scheduledAt && keys.some(k=>t.scheduledAt.startsWith(k))) t.done = true;
+  });
+  render();
+  celebrate();
+});
+
+// theme
+themeBtn.addEventListener("click", ()=>{
+  settings.theme = settings.theme==="dark" ? "light" : "dark";
+  document.documentElement.style.colorScheme = settings.theme;
+  save(LS_SETTINGS, settings);
+});
+
+// export/import
+exportBtn.addEventListener("click", ()=>{
+  const blob = new Blob([JSON.stringify({tasks, settings}, null, 2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="chaos-control.json";
+  a.click();
+});
+importBtn.addEventListener("click", async ()=>{
+  const inp=document.createElement("input");
+  inp.type="file"; inp.accept="application/json";
+  inp.onchange = async ()=> {
+    const txt = await inp.files[0].text();
+    try{
+      const obj = JSON.parse(txt);
+      if (Array.isArray(obj.tasks)) tasks = obj.tasks;
+      if (obj.settings) settings = {...settings, ...obj.settings};
+      render();
+    }catch(e){ alert("Import failed: invalid file."); }
+  };
+  inp.click();
+});
+
+// ===== Reward popup / confetti
+let rewardTimer=null;
+function celebrate(){
+  // play ding if available
+  try{ ding.currentTime=0; ding.play().catch(()=>{}); }catch{}
+  // modal
+  reward.classList.remove("hide");
+  clearTimeout(rewardTimer);
+  rewardTimer = setTimeout(closeReward, 2200);
+  // confetti
+  burstConfetti();
+}
+function maybeCelebrateDay(){
+  // if every block in current day done -> celebrate
+  const keys = [...Array(7)].map((_,i)=>toKey(addDays(startOfWeek,i)));
+  const todayKey = toKey(new Date());
+  const list = tasks.filter(t=>t.scheduledAt && t.scheduledAt.startsWith(todayKey));
+  if (list.length && list.every(t=>t.done)) celebrate();
+}
+function closeReward(){
+  reward.classList.add("hide");
+}
+reward.addEventListener("click", e=>{
+  if (e.target===reward) closeReward();
+});
+rewardClose.addEventListener("click", closeReward);
+document.addEventListener("keydown", e=>{ if (e.key==="Escape") closeReward(); });
+
+// confetti engine (tiny)
+function burstConfetti(){
+  const W = confettiCanvas.width = innerWidth;
+  const H = confettiCanvas.height = innerHeight;
+  const N = 140;
+  const pieces = Array.from({length:N}).map(()=>({
+    x: Math.random()*W, y: -20, r: Math.random()*4+2,
+    vx:(Math.random()-.5)*1.5, vy: Math.random()*2+2,
+    a: Math.random()*360
+  }));
+  const colors = ["#ffd166","#e76f51","#43aa8b","#90be6d","#577590","#7aa2ff"];
+
+  let t = 0;
+  function tick(){
+    ctx.clearRect(0,0,W,H);
+    for (const p of pieces){
+      p.x += p.vx; p.y += p.vy; p.a += 6;
+      ctx.save();
+      ctx.translate(p.x,p.y);
+      ctx.rotate(p.a*Math.PI/180);
+      ctx.fillStyle = colors[(p.a|0)%colors.length];
+      ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r);
+      ctx.restore();
+    }
+    t++;
+    if (t<80) requestAnimationFrame(tick);
+    else ctx.clearRect(0,0,W,H);
+  }
+  tick();
+}
+
+// ===== Helpers
+function escapeHTML(s){ return s.replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
+function hmToMin(hm){ const [h,m]=hm.split(":").map(Number); return h*60+m; }
+function minToHM(m){ return `${pad2((m/60)|0)}:${pad2(m%60)}`; }
+function parseISO(yyyyMMdd){ const [y,mo,d]=yyyyMMdd.split("T")[0].split("-").map(Number); return new Date(y,mo-1,d); }
+
+// ===== Init
+document.documentElement.style.colorScheme = settings.theme;
+render();
