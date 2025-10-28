@@ -1,161 +1,143 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chaos Control — Smart Scheduler v4 (Static)</title>
+  <title>Chaos Control — Smart Scheduler v4</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="bomb-muted.svg" />
+  <meta name="color-scheme" content="dark light" />
 </head>
 <body>
   <header class="app-header">
     <div class="brand">
-      <img src="assets/bomb-muted.svg" class="logo" alt="Maximum Chaos bomb">
-      <div class="title">
+      <img src="bomb-muted.svg" alt="" class="bomb" />
+      <div>
         <h1>Chaos Control</h1>
-        <p class="subtitle">Smart Scheduler — dysfunctional adults managing total chaos!</p>
+        <p class="tag">Smart Scheduler — dysfunctional adults managing total chaos!</p>
       </div>
     </div>
     <div class="header-actions">
-      <button id="btnTheme" class="ghost">Theme</button>
-      <button id="btnExport" class="ghost">Export</button>
-      <button id="btnImport" class="ghost">Import</button>
-      <input id="importFile" type="file" accept="application/json" hidden />
+      <button id="themeBtn" class="btn">Theme</button>
+      <button id="exportBtn" class="btn">Export</button>
+      <button id="importBtn" class="btn">Import</button>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="left-col">
-      <div class="card">
-        <h2>Add a new task</h2>
-        <div class="form-grid">
-          <input id="taskTitle" class="grow" placeholder="Task title…" />
-          <div class="inline">
-            <label>Duration</label>
-            <input id="durHr" type="number" min="0" value="1" /> hr
-            <input id="durMin" type="number" min="0" max="59" value="0" /> min
+  <main class="app-shell">
+    <!-- Add Task -->
+    <section class="panel">
+      <h2>Add a new task</h2>
+      <form id="taskForm" class="grid">
+        <input id="title" class="i" placeholder="Task title…" autocomplete="off" />
+        <div class="row2">
+          <label>Duration</label>
+          <div class="duration">
+            <input id="durHr" class="i num" type="number" min="0" value="1" /> <span>hr</span>
+            <input id="durMin" class="i num" type="number" min="0" max="59" value="0" /> <span>min</span>
           </div>
-          <div class="inline">
-            <label>Priority</label>
-            <select id="prio">
-              <option value="low">Low</option>
-              <option value="med" selected>Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
+          <label>Priority</label>
+          <select id="priority" class="i">
+            <option value="Low">Low</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="High">High</option>
+          </select>
+        </div>
 
-          <div class="inline">
-            <label>When</label>
-            <label class="chip"><input type="radio" name="when" value="flex" checked> Flexible</label>
-            <label class="chip"><input type="radio" name="when" value="fixed"> Fixed</label>
-          </div>
-
-          <div id="flexRow" class="inline">
-            <label>Flex options</label>
-            <select id="flexPreset">
-              <option value="today">Today</option>
-              <option value="next2">Next 2 days</option>
-              <option value="week">This week</option>
-              <option value="none">Any time</option>
-            </select>
+        <div class="row2">
+          <label>When</label>
+          <div class="radio-row">
+            <label><input type="radio" name="when" value="flex" checked /> Flexible</label>
+            <label><input type="radio" name="when" value="fixed" /> Fixed</label>
           </div>
 
-          <div id="fixedRow" class="inline hidden">
-            <label>Fixed date/time</label>
-            <input id="fixedDate" type="date" />
-            <input id="fixedTime" type="time" step="900" placeholder="--:--" />
+          <div id="flexOpts" class="flex-opts">
+            <label class="chip"><input type="radio" name="flex" value="today" checked /> Today</label>
+            <label class="chip"><input type="radio" name="flex" value="next2d" /> Next 2d</label>
+            <label class="chip"><input type="radio" name="flex" value="week" /> This week</label>
+            <label class="chip bydate"><input type="radio" name="flex" value="bydate" /> By date</label>
+            <input id="byDate" class="i date" type="date" />
           </div>
 
-          <details class="recurring">
-            <summary>Recurring</summary>
-            <div class="inline">
-              <label>Pattern</label>
-              <select id="recPattern">
-                <option value="none" selected>None</option>
-                <option value="daily">Daily</option>
-                <option value="weekdays">Weekdays (Mon–Fri)</option>
-                <option value="weekly">Weekly (same weekday)</option>
-                <option value="monthly-date">Monthly (same date)</option>
-              </select>
-              <label>End</label>
-              <input id="recEnd" type="date" />
-            </div>
-          </details>
-
-          <div class="inline">
-            <label>Calendar</label>
-            <select id="calendar">
-              <option value="work" selected>Work</option>
-              <option value="home">Home</option>
-            </select>
-          </div>
-
-          <div class="form-actions">
-            <button id="btnAdd" class="primary">Add</button>
-            <button id="btnAuto" class="secondary">Auto‑Schedule</button>
-            <button id="btnClearInputs" class="ghost">Clear inputs</button>
-            <button id="btnClearAll" class="danger">Clear entire schedule</button>
+          <div id="fixedOpts" class="fixed-opts hide">
+            <label>Fixed date</label>
+            <input id="fixedDate" class="i date" type="date" />
+            <label>time</label>
+            <input id="fixedTime" class="i time" type="time" step="60" placeholder="--:--" />
           </div>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>Reminders & Urgent</h2>
-        <ul id="reminders" class="reminders"></ul>
-      </div>
+        <div class="row2">
+          <label>Calendar</label>
+          <select id="calendar" class="i">
+            <option value="Work" selected>Work</option>
+            <option value="Home">Home</option>
+          </select>
 
-      <div class="card">
-        <h2>Unscheduled tasks</h2>
-        <ul id="unscheduled" class="task-list"></ul>
-      </div>
-
-      <div class="card">
-        <h2>Search</h2>
-        <div class="inline">
-          <input id="searchBox" class="grow" placeholder="Search title or 36013 style tags…" />
-          <button id="btnSearch" class="secondary">Search</button>
+          <label>Repeats</label>
+          <select id="repeat" class="i">
+            <option value="none" selected>None</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="mowf">Mon-Fri</option>
+          </select>
         </div>
-        <ul id="searchResults" class="task-list muted"></ul>
+
+        <div class="row2 actions-row">
+          <button id="addBtn" type="submit" class="btn primary">Add</button>
+          <button id="autoBtn" type="button" class="btn">Auto-Schedule</button>
+          <button id="clearInputsBtn" type="button" class="btn ghost">Clear inputs</button>
+        </div>
+      </form>
+      <div class="toolbar">
+        <button id="clearDayBtn" class="btn warn subtle">Clear entire schedule</button>
       </div>
     </section>
 
-    <section class="right-col">
-      <div class="toolbar card compact">
-        <div class="inline">
-          <button id="prevWeek" class="ghost">&larr; Prev</button>
-          <button id="todayBtn" class="ghost">Today</button>
-          <button id="nextWeek" class="ghost">Next &rarr;</button>
-        </div>
-        <div class="inline">
-          <label>Workday</label>
-          <input id="startTime" type="time" value="09:00">
-          <span>–</span>
-          <input id="endTime" type="time" value="17:00">
-          <label>Theme</label>
-          <select id="tone">
-            <option value="auto" selected>Auto</option>
-            <option value="mild">Mild Spice</option>
-            <option value="zesty">Zesty</option>
-          </select>
-        </div>
+    <!-- Reminders -->
+    <section class="panel">
+      <h2>Reminders &amp; Urgent</h2>
+      <ul id="urgentList" class="list"></ul>
+    </section>
+
+    <!-- Calendar -->
+    <section class="panel">
+      <div class="cal-toolbar">
+        <button id="prevWeek" class="btn ghost">◀ Prev</button>
+        <button id="todayBtn" class="btn ghost">Today</button>
+        <button id="nextWeek" class="btn ghost">Next ▶</button>
+        <div class="spacer"></div>
+        <button id="autoAllBtn" class="btn primary">Auto-Schedule All</button>
       </div>
 
-      <div id="calendarGrid" class="calendar"></div>
+      <div id="calendarEl" class="calendar">
+        <!-- columns rendered by JS -->
+      </div>
+    </section>
+
+    <!-- Unscheduled -->
+    <section class="panel">
+      <h2>Unscheduled tasks</h2>
+      <p id="unscheduledEmpty" class="muted">Nothing here — everything else is on the calendar.</p>
+      <ul id="taskList" class="list"></ul>
     </section>
   </main>
 
-  <div id="toast" class="toast"></div>
-  <div id="starModal" class="star hidden">
-    <div class="star-inner">
-      <div class="big-star">★</div>
-      <h3>Day cleared!</h3>
-      <p id="quip"></p>
-      <button id="starClose" class="primary">Nice.</button>
+  <!-- Reward modal -->
+  <div id="reward" class="modal hide" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="star">★</div>
+      <h3 id="rewardTitle">Day cleared!</h3>
+      <p class="reward-line" id="rewardLine">Nice.</p>
+      <button class="btn primary" id="rewardClose">OK</button>
     </div>
   </div>
 
-  <audio id="ding" preload="auto">
-    <source src="assets/ding.mp3" type="audio/mpeg">
-  </audio>
+  <!-- confetti canvas (behind UI) -->
+  <canvas id="confetti" class="confetti"></canvas>
+
+  <!-- audio (optional) -->
+  <audio id="ding" src="ding.mp3" preload="auto"></audio>
 
   <script src="app.js"></script>
 </body>
