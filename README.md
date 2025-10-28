@@ -1,4 +1,4 @@
-# Chaos Control — Smart Scheduler v4 (Static)
+# Chaos Control — Smart Scheduler v4 (Static).
 
 A zero‑build, GitHub Pages–friendly app. Upload these files to your repo root and push to **main**.
 
