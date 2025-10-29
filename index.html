@@ -1,215 +1,52 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chaos Control — Smart Scheduler v4</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chaos Control — Smart Scheduler</title>
+
   <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="bomb-muted.svg" />
-  <meta name="color-scheme" content="dark light" />
+  <link rel="stylesheet" href="editor.css" />
 </head>
 <body>
-  <header class="app-header">
-    <div class="brand">
-      <img src="bomb-muted.svg" alt="" class="bomb" />
-      <div>
-        <h1>Chaos Control</h1>
-        <p class="tag">Smart Scheduler — dysfunctional adults managing total chaos!</p>
-      </div>
-    </div>
-    <div class="header-actions">
-      <button id="themeBtn" class="btn">Theme</button>
-      <button id="exportBtn" class="btn">Export</button>
-      <button id="importBtn" class="btn">Import</button>
-    </div>
+  <header>
+    <h1>💣 Chaos Control</h1>
+    <p>Smart Scheduler — dysfunctional adults managing total chaos!</p>
   </header>
 
-  <main class="app-shell">
-    <!-- Add Task -->
-    <section class="panel">
+  <main>
+    <section id="taskForm">
       <h2>Add a new task</h2>
-      <form id="taskForm" class="grid">
-        <input id="title" class="i" placeholder="Task title…" autocomplete="off" />
-        <div class="row2">
-          <label>Duration</label>
-          <div class="duration">
-            <input id="durHr" class="i num" type="number" min="0" value="1" /> <span>hr</span>
-            <input id="durMin" class="i num" type="number" min="0" max="59" value="0" /> <span>min</span>
-          </div>
-          <label>Priority</label>
-          <select id="priority" class="i">
-            <option value="Low">Low</option>
-            <option value="Medium" selected>Medium</option>
-            <option value="High">High</option>
-          </select>
-        </div>
-
-        <div class="row2">
-          <label>When</label>
-          <div class="radio-row">
-            <label><input type="radio" name="when" value="flex" checked /> Flexible</label>
-            <label><input type="radio" name="when" value="fixed" /> Fixed</label>
-          </div>
-
-          <div id="flexOpts" class="flex-opts">
-            <label class="chip"><input type="radio" name="flex" value="today" checked /> Today</label>
-            <label class="chip"><input type="radio" name="flex" value="next2d" /> Next 2d</label>
-            <label class="chip"><input type="radio" name="flex" value="week" /> This week</label>
-            <label class="chip bydate"><input type="radio" name="flex" value="bydate" /> By date</label>
-            <input id="byDate" class="i date" type="date" />
-          </div>
-
-          <div id="fixedOpts" class="fixed-opts hide">
-            <label>Fixed date</label>
-            <input id="fixedDate" class="i date" type="date" />
-            <label>time</label>
-            <input id="fixedTime" class="i time" type="time" step="60" placeholder="--:--" />
-          </div>
-        </div>
-
-        <div class="row2">
-          <label>Calendar</label>
-          <select id="calendar" class="i">
-            <option value="Work" selected>Work</option>
-            <option value="Home">Home</option>
-          </select>
-
-          <label>Repeats</label>
-          <select id="repeat" class="i">
-            <option value="none" selected>None</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="mowf">Mon-Fri</option>
-          </select>
-        </div>
-
-        <div class="row2 actions-row">
-          <button id="addBtn" type="submit" class="btn primary">Add</button>
-          <button id="autoBtn" type="button" class="btn">Auto-Schedule</button>
-          <button id="clearInputsBtn" type="button" class="btn ghost">Clear inputs</button>
-        </div>
-      </form>
-      <div class="toolbar">
-        <button id="clearDayBtn" class="btn warn subtle">Clear entire schedule</button>
+      <input id="taskTitle" placeholder="Task title" />
+      <div>
+        <input id="taskHours" type="number" value="1" min="0" /> hr
+        <input id="taskMinutes" type="number" value="0" min="0" step="5" /> min
       </div>
+      <select id="calendarSelect">
+        <option value="Work">Work</option>
+        <option value="Home">Home</option>
+      </select>
+      <button id="addTask">Add</button>
+      <button id="autoSchedule">Auto-Schedule</button>
     </section>
 
-    <!-- Reminders -->
-    <section class="panel">
-      <h2>Reminders &amp; Urgent</h2>
-      <ul id="urgentList" class="list"></ul>
+    <section>
+      <h2>Reminders & Urgent</h2>
+      <div id="reminders"></div>
     </section>
 
-    <!-- Calendar -->
-    <section class="panel">
-      <div class="cal-toolbar">
-        <button id="prevWeek" class="btn ghost">◀ Prev</button>
-        <button id="todayBtn" class="btn ghost">Today</button>
-        <button id="nextWeek" class="btn ghost">Next ▶</button>
-        <div class="spacer"></div>
-        <button id="autoAllBtn" class="btn primary">Auto-Schedule All</button>
-      </div>
-
-      <div id="calendarEl" class="calendar">
-        <!-- columns rendered by JS -->
-      </div>
+    <section>
+      <h2>Calendar</h2>
+      <div id="calendar"></div>
     </section>
 
-    <!-- Unscheduled -->
-    <section class="panel">
-      <h2>Unscheduled tasks</h2>
-      <p id="unscheduledEmpty" class="muted">Nothing here — everything else is on the calendar.</p>
-      <ul id="taskList" class="list"></ul>
+    <section>
+      <h2>Unscheduled Tasks</h2>
+      <div id="unscheduled"></div>
     </section>
   </main>
 
-  <!-- Reward modal -->
-  <div id="reward" class="modal hide" role="dialog" aria-modal="true">
-    <div class="modal-card">
-      <div class="star">★</div>
-      <h3 id="rewardTitle">Day cleared!</h3>
-      <p class="reward-line" id="rewardLine">Nice.</p>
-      <button class="btn primary" id="rewardClose">OK</button>
-    </div>
-  </div>
-
-  <!-- confetti canvas (behind UI) -->
-  <canvas id="confetti" class="confetti"></canvas>
-
-  <!-- audio (optional) -->
-  <audio id="ding" src="ding.mp3" preload="auto"></audio>
-
   <script src="app.js"></script>
-  <!-- Task Editor Modal -->
-<div id="taskEditor" class="mc-modal" aria-hidden="true">
-  <div class="mc-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="mcEditTitle">
-    <div class="mc-modal__header">
-      <h2 id="mcEditTitle">Edit task</h2>
-      <button class="mc-btn mc-btn--ghost" id="mcCloseEditor" aria-label="Close">✕</button>
-    </div>
-
-    <div class="mc-modal__body">
-      <label class="mc-field">
-        <span>Title</span>
-        <input id="mcEdit_title" type="text" />
-      </label>
-
-      <div class="mc-field-grid">
-        <label class="mc-field">
-          <span>Hours</span>
-          <input id="mcEdit_hours" type="number" min="0" step="1" />
-        </label>
-        <label class="mc-field">
-          <span>Minutes</span>
-          <input id="mcEdit_minutes" type="number" min="0" step="5" />
-        </label>
-        <label class="mc-field">
-          <span>Priority</span>
-          <select id="mcEdit_priority">
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </label>
-      </div>
-
-      <label class="mc-field mc-field--row">
-        <input id="mcEdit_flexible" type="checkbox" />
-        <span>Flexible (no fixed time)</span>
-      </label>
-
-      <div id="mcEdit_whenWrap" class="mc-field-grid">
-        <label class="mc-field">
-          <span>Date</span>
-          <input id="mcEdit_date" type="date" />
-        </label>
-        <label class="mc-field">
-          <span>Time</span>
-          <input id="mcEdit_time" type="time" />
-        </label>
-      </div>
-
-      <label class="mc-field">
-        <span>Calendar</span>
-        <select id="mcEdit_calendar">
-          <option value="work">Work</option>
-          <option value="home">Home</option>
-        </select>
-      </label>
-
-      <label class="mc-field mc-field--row">
-        <input id="mcEdit_done" type="checkbox" />
-        <span>Mark complete</span>
-      </label>
-    </div>
-
-    <div class="mc-modal__footer">
-      <button class="mc-btn mc-btn--danger" id="mcDeleteTask">Delete</button>
-      <div class="mc-spacer"></div>
-      <button class="mc-btn mc-btn--ghost" id="mcUnscheduleTask" title="Remove from calendar but keep task">Unschedule</button>
-      <button class="mc-btn" id="mcSaveTask">Save</button>
-    </div>
-  </div>
-</div>
+  <script src="editor.js"></script>
 </body>
 </html>
