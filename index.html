@@ -140,5 +140,76 @@
   <audio id="ding" src="ding.mp3" preload="auto"></audio>
 
   <script src="app.js"></script>
+  <!-- Task Editor Modal -->
+<div id="taskEditor" class="mc-modal" aria-hidden="true">
+  <div class="mc-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="mcEditTitle">
+    <div class="mc-modal__header">
+      <h2 id="mcEditTitle">Edit task</h2>
+      <button class="mc-btn mc-btn--ghost" id="mcCloseEditor" aria-label="Close">✕</button>
+    </div>
+
+    <div class="mc-modal__body">
+      <label class="mc-field">
+        <span>Title</span>
+        <input id="mcEdit_title" type="text" />
+      </label>
+
+      <div class="mc-field-grid">
+        <label class="mc-field">
+          <span>Hours</span>
+          <input id="mcEdit_hours" type="number" min="0" step="1" />
+        </label>
+        <label class="mc-field">
+          <span>Minutes</span>
+          <input id="mcEdit_minutes" type="number" min="0" step="5" />
+        </label>
+        <label class="mc-field">
+          <span>Priority</span>
+          <select id="mcEdit_priority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="mc-field mc-field--row">
+        <input id="mcEdit_flexible" type="checkbox" />
+        <span>Flexible (no fixed time)</span>
+      </label>
+
+      <div id="mcEdit_whenWrap" class="mc-field-grid">
+        <label class="mc-field">
+          <span>Date</span>
+          <input id="mcEdit_date" type="date" />
+        </label>
+        <label class="mc-field">
+          <span>Time</span>
+          <input id="mcEdit_time" type="time" />
+        </label>
+      </div>
+
+      <label class="mc-field">
+        <span>Calendar</span>
+        <select id="mcEdit_calendar">
+          <option value="work">Work</option>
+          <option value="home">Home</option>
+        </select>
+      </label>
+
+      <label class="mc-field mc-field--row">
+        <input id="mcEdit_done" type="checkbox" />
+        <span>Mark complete</span>
+      </label>
+    </div>
+
+    <div class="mc-modal__footer">
+      <button class="mc-btn mc-btn--danger" id="mcDeleteTask">Delete</button>
+      <div class="mc-spacer"></div>
+      <button class="mc-btn mc-btn--ghost" id="mcUnscheduleTask" title="Remove from calendar but keep task">Unschedule</button>
+      <button class="mc-btn" id="mcSaveTask">Save</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
