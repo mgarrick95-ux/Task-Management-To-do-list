@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chaos Control — Smart Scheduler</title>
+  <link rel="icon" href="bomb-muted.svg">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="editor.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <img src="bomb-muted.svg" class="logo" alt="💣">
+      <div class="brand-text">
+        <h1>Chaos Control</h1>
+        <p class="tag">Smart Scheduler — dysfunctional adults managing total chaos!</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="themeToggle" class="btn ghost" title="Toggle theme">🌓</button>
+      <button id="exportBtn" class="btn ghost" title="Export backup">Export</button>
+      <button id="importBtn" class="btn ghost" title="Import backup">Import</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel add">
+      <h2>Add a task</h2>
+      <div class="form-grid">
+        <label><span>Title</span><input id="title" placeholder="e.g., 36013 — Call ATCO" /></label>
+        <div class="hm">
+          <label><span>Hours</span><input id="durHr" type="number" min="0" step="1" value="0" /></label>
+          <label><span>Minutes</span><input id="durMin" type="number" min="0" step="5" value="30" /></label>
+        </div>
+        <label><span>Priority</span><select id="priority"><option>Low</option><option selected>Medium</option><option>High</option></select></label>
+        <label><span>Calendar</span><select id="calendar"><option>Work</option><option>Home</option></select></label>
+      </div>
+
+      <fieldset class="when">
+        <legend>When</legend>
+        <label><input type="radio" name="when" value="flex" checked /> Flexible</label>
+        <label><input type="radio" name="when" value="fixed" /> Fixed</label>
+      </fieldset>
+
+      <div id="flexOpts" class="flex-wrap">
+        <div class="chips" id="flexChips">
+          <button class="chip active" data-flex="today">Today</button>
+          <button class="chip" data-flex="next2d">Next 2 days</button>
+          <button class="chip" data-flex="week">This week</button>
+          <button class="chip" data-flex="bydate">By date…</button>
+          <input id="flexDate" type="date" class="hide">
+        </div>
+      </div>
+
+      <div id="fixedOpts" class="flex-wrap hide">
+        <label><span>Date</span><input id="fixedDate" type="date" /></label>
+        <label><span>Time</span><input id="fixedTime" type="time" /></label>
+      </div>
+
+      <div class="buttons">
+        <button id="addBtn" class="btn">Add</button>
+        <button id="autoBtn" class="btn ghost">Auto-Schedule</button>
+        <button id="todayBtn" class="btn ghost">Today</button>
+        <button id="prevWeek" class="btn ghost">◀ Week</button>
+        <button id="nextWeek" class="btn ghost">Week ▶</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Reminders & Urgent</h2>
+        <ul id="urgentList" class="list"></ul>
+      </div>
+      <div class="panel">
+        <h2>Unscheduled</h2>
+        <ul id="unscheduledList" class="list"></ul>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="cal-head">
+        <h2>This Week</h2>
+        <div class="cal-nav">
+          <button id="prevDay" class="btn ghost">◀ Day</button>
+          <button id="nextDay" class="btn ghost">Day ▶</button>
+        </div>
+      </div>
+      <div id="calendarEl" class="calendar"></div>
+    </section>
+  </main>
+
+  <!-- Celebration -->
+  <div id="reward" class="reward hide">
+    <div class="reward__inner">
+      <div class="star">⭐</div>
+      <div class="msg" id="rewardMsg">Gold star! You demolished today’s chaos. ✨</div>
+      <button id="rewardClose" class="btn ghost">Close</button>
+    </div>
+  </div>
+  <audio id="ding" preload="auto">
+    <source src="ding.mp3" type="audio/mpeg">
+  </audio>
+
+  <script src="app.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>
